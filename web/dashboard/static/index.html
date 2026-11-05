@@ -1,0 +1,136 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>cache-boy dashboard</title>
+<link rel="icon" href="favicon.svg" type="image/svg+xml">
+<link rel="stylesheet" href="app.css">
+</head>
+<body>
+<header class="topbar">
+  <div class="brand">
+    <svg class="logo" viewBox="0 0 32 32" aria-hidden="true"><rect x="3" y="6" width="26" height="6" rx="2"/><rect x="3" y="14" width="26" height="6" rx="2"/><rect x="3" y="22" width="26" height="6" rx="2"/></svg>
+    <span>cache-boy</span>
+    <span id="conn-dot" class="dot" title="connection"></span>
+  </div>
+  <nav class="tabs" id="tabs" role="tablist">
+    <button data-tab="overview" class="active" role="tab">Overview</button>
+    <button data-tab="keys" role="tab">Keys</button>
+    <button data-tab="console" role="tab">Console</button>
+    <button data-tab="events" role="tab">Events</button>
+    <button data-tab="slowlog" role="tab">Slowlog</button>
+    <button data-tab="clients" role="tab">Clients</button>
+    <button data-tab="commands" role="tab">Commands</button>
+  </nav>
+  <label class="ns">
+    <span>ns</span>
+    <input id="ns-input" placeholder="default" spellcheck="false" autocomplete="off">
+  </label>
+</header>
+
+<main>
+  <!-- Overview -->
+  <section id="tab-overview" class="tab active">
+    <div class="cards">
+      <div class="card"><div class="label">Version</div><div class="value" id="c-version">–</div><div class="sub" id="c-version-sub"></div></div>
+      <div class="card"><div class="label">Uptime</div><div class="value" id="c-uptime">–</div><div class="sub" id="c-uptime-sub"></div></div>
+      <div class="card wide"><div class="label">Ops / sec</div><div class="value" id="c-ops">–</div><canvas class="spark" id="spark-ops"></canvas></div>
+      <div class="card wide"><div class="label">Memory</div><div class="value" id="c-mem">–</div>
+        <div class="bar"><div class="bar-fill" id="c-mem-bar"></div></div>
+        <canvas class="spark" id="spark-mem"></canvas></div>
+      <div class="card"><div class="label">Keys</div><div class="value" id="c-keys">–</div><div class="sub" id="c-keys-sub"></div></div>
+      <div class="card"><div class="label">Hit ratio</div><div class="value" id="c-hit">–</div><div class="sub" id="c-hit-sub"></div></div>
+      <div class="card"><div class="label">Clients</div><div class="value" id="c-clients">–</div><div class="sub" id="c-clients-sub"></div></div>
+    </div>
+    <div class="panel">
+      <h2>Server</h2>
+      <dl class="kv" id="server-kv"></dl>
+    </div>
+  </section>
+
+  <!-- Keys -->
+  <section id="tab-keys" class="tab">
+    <form class="toolbar" id="scan-form">
+      <input id="scan-pattern" placeholder="pattern, e.g. user:*" value="*" spellcheck="false" autocomplete="off">
+      <select id="scan-type">
+        <option value="">all types</option>
+        <option>string</option><option>hash</option><option>list</option><option>set</option>
+        <option>zset</option><option>json</option><option>timeseries</option><option>vectorset</option>
+      </select>
+      <button type="submit" class="primary">Search</button>
+    </form>
+    <div class="split">
+      <div class="panel list-panel">
+        <div class="list-head"><span id="scan-count">0 keys</span><button id="scan-more" class="ghost" hidden>Load more</button></div>
+        <ul class="keylist" id="keylist"></ul>
+      </div>
+      <div class="panel" id="key-view">
+        <div class="empty">Select a key to see its value.</div>
+      </div>
+    </div>
+  </section>
+
+  <!-- Console -->
+  <section id="tab-console" class="tab">
+    <div class="panel console">
+      <div class="console-out" id="console-out" aria-live="polite"></div>
+      <form class="console-in" id="console-form">
+        <span class="prompt">&gt;</span>
+        <input id="console-input" placeholder='SET greeting "hello world"' spellcheck="false" autocomplete="off">
+        <button type="submit" class="primary">Run</button>
+      </form>
+    </div>
+    <p class="hint">↑/↓ browse history. Arguments use redis-cli quoting ("double" or 'single').</p>
+  </section>
+
+  <!-- Events -->
+  <section id="tab-events" class="tab">
+    <div class="toolbar">
+      <input id="events-pattern" value="*" spellcheck="false" autocomplete="off" aria-label="key pattern">
+      <button id="events-toggle" class="primary">Start</button>
+      <button id="events-clear" class="ghost">Clear</button>
+      <span id="events-status" class="muted"></span>
+    </div>
+    <div class="panel">
+      <table class="table"><thead><tr><th>Time</th><th>Op</th><th>Key</th></tr></thead><tbody id="events-body"></tbody></table>
+    </div>
+  </section>
+
+  <!-- Slowlog -->
+  <section id="tab-slowlog" class="tab">
+    <div class="panel">
+      <table class="table"><thead><tr><th>#</th><th>Time</th><th class="num">Duration</th><th>Command</th><th>Client</th></tr></thead><tbody id="slowlog-body"></tbody></table>
+    </div>
+  </section>
+
+  <!-- Clients -->
+  <section id="tab-clients" class="tab">
+    <div class="panel">
+      <table class="table"><thead><tr><th class="num">ID</th><th>Address</th><th>Kind</th><th>Name</th><th>User</th><th>Namespace</th><th class="num">Age</th><th class="num">Idle</th><th>Last cmd</th></tr></thead><tbody id="clients-body"></tbody></table>
+    </div>
+  </section>
+
+  <!-- Command stats -->
+  <section id="tab-commands" class="tab">
+    <div class="panel">
+      <table class="table"><thead><tr><th>Command</th><th class="num">Calls</th><th class="num">Failed</th><th class="num">Total time</th><th class="num">Avg / call</th></tr></thead><tbody id="commands-body"></tbody></table>
+    </div>
+  </section>
+</main>
+
+<div class="toast" id="toast" hidden></div>
+
+<dialog id="login">
+  <form method="dialog" id="login-form">
+    <h2>Authentication required</h2>
+    <p class="muted">Enter the server password, or <code>user:password</code> for an ACL user.</p>
+    <input id="login-input" type="password" autocomplete="current-password" required>
+    <p class="error" id="login-error"></p>
+    <div class="actions"><button type="submit" class="primary">Sign in</button></div>
+  </form>
+</dialog>
+
+<script src="app.js"></script>
+</body>
+</html>
