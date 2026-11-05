@@ -171,10 +171,10 @@ func (e *Engine) RemovePropagator(p Propagator) {
 func (e *Engine) SetLoading(b bool) { e.loading.Store(b) }
 func (e *Engine) Loading() bool     { return e.loading.Load() }
 
-// Dump emits commands that recreate the whole dataset: every key, its TTL,
-// and the state of feature modules. The caller must hold DB.LockAll().
-func (e *Engine) Dump(emit func(args []string)) {
-	e.dumpKeys(emit)
+// DumpModules emits commands that recreate the state feature modules keep
+// outside the keyspace (queues, tags, webhooks...). Snapshots store keys in
+// binary form and append these commands. The caller must hold DB.LockAll().
+func (e *Engine) DumpModules(emit func(args []string)) {
 	for _, d := range e.dumpers {
 		d.Dump(emit)
 	}
