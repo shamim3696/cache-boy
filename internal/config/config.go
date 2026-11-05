@@ -55,7 +55,7 @@ type Config struct {
 	ClusterNodeID  string
 	ClusterNodes   []string // "id host:port slotStart-slotEnd"
 	RaftPort       int
-	RaftPeers      []string // "id host:raftport"
+	RaftPeers      []string // "id raftHost:raftPort dataHost:dataPort"
 
 	SlowlogLogSlowerThan int64 // microseconds; <0 disables
 	SlowlogMaxLen        int

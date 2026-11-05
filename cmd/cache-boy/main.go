@@ -10,10 +10,14 @@ import (
 	"os"
 	"os/signal"
 	"strconv"
+	"sync"
 	"syscall"
 
+	"cache-boy/internal/cluster"
 	"cache-boy/internal/command"
 	"cache-boy/internal/config"
+	"cache-boy/internal/persistence"
+	"cache-boy/internal/replication"
 	"cache-boy/internal/server"
 )
 
@@ -32,6 +36,21 @@ func main() {
 	cs := config.NewStore(cfg)
 
 	e := command.New(cs)
+
+	// Order matters: persistence loads data first, then replication may
+	// start following a leader. Everything is set up before serving.
+	pm, err := persistence.Setup(e)
+	if err != nil {
+		log.Fatalf("persistence: %v", err)
+	}
+	if _, err := cluster.Setup(e); err != nil {
+		log.Fatalf("cluster: %v", err)
+	}
+	rm := replication.Setup(e)
+	rn, err := replication.SetupRaft(e, rm, replication.RaftOptions{})
+	if err != nil {
+		log.Fatalf("raft: %v", err)
+	}
 	e.Start()
 
 	srv := server.New(e)
@@ -40,10 +59,20 @@ func main() {
 		log.Fatalf("listen %s: %v", addr, err)
 	}
 
+	var once sync.Once
 	shutdown := func(save bool) error {
-		srv.Close()
-		e.Stop()
-		os.Exit(0)
+		once.Do(func() {
+			srv.Close() // stop taking commands first
+			if rn != nil {
+				rn.Stop()
+			}
+			rm.Close()
+			if err := pm.Close(save); err != nil {
+				log.Printf("shutdown: %v", err)
+			}
+			e.Stop()
+			os.Exit(0)
+		})
 		return nil
 	}
 	command.OnShutdown = shutdown
