@@ -70,9 +70,9 @@ Every non-Redis command is documented in [docs/features.md](docs/features.md).
 - **AI**: semantic cache for LLM responses, vector similarity search
 - **Pub/Sub**: channels and patterns, key-change streams, webhooks
 - **Persistence**: binary snapshots (`SAVE`, `BGSAVE`, save rules) and an append-only file with fsync policies and rewrite
-- **Replication**: leader → replicas with full sync and a command stream, `WAIT`, read-only replicas
+- **Replication**: leader → replicas with full sync, partial resync from a backlog after short disconnects, `WAIT`, read-only replicas, `masterauth`
 - **High availability**: Raft leader election for automatic failover
-- **Cluster**: 16384 hash slots with a static slot map, `MOVED` / `CROSSSLOT` redirects
+- **Cluster**: 16384 hash slots with a static slot map, `MOVED` / `CROSSSLOT` redirects; the TS SDK's `CacheBoyCluster` routes by slot and follows redirects
 - **Security**: `requirepass`, ACL users with command, category and key-pattern rules
 - **Observability**: INFO, SLOWLOG, MONITOR, per-command latency histograms, Prometheus, a dashboard
 
@@ -120,9 +120,15 @@ cd sdk/typescript && npm install && npm test     # TypeScript SDK
 CACHEBOY_URL=redis://127.0.0.1:6380 npm test     # SDK against a running server
 ```
 
+## Performance
+
+With many keys and no pipelining, cache-boy is about 2x faster than Redis 7 on the same 4 CPUs. With pipelining the two are roughly even. With one extremely hot key under heavy pipelining, Redis is faster. See [docs/benchmarks.md](docs/benchmarks.md).
+
+The test suite passes under the race detector (`go test -race ./...`).
+
 ## Known limitations
 
-- Replication always does a full resync on reconnect (no partial resync backlog).
+- After a long disconnect (more writes than `repl-backlog-size`), a replica falls back to a full resync. A replica that restarts always does a full resync, because the replication ID is not persisted.
 - Failover can lose writes the new leader hadn't received yet, because replication is asynchronous (as in Redis).
 - Cluster slots are a static map from the config; there's no resharding or gossip.
 - Snapshots and AOF rewrites briefly lock all shards and need a temporary in-memory copy of the dataset, because Go can't `fork()` like Redis.

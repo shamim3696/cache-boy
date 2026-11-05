@@ -292,3 +292,16 @@ npm test           # build + node --test (unit tests; integration tests are skip
 CACHEBOY_URL=redis://127.0.0.1:6380 npm test
 CACHEBOY_URL=redis://127.0.0.1:6380 CACHEBOY_HTTP_URL=http://127.0.0.1:8080 CACHEBOY_TOKEN=secret npm test
 ```
+
+## Cluster
+
+```ts
+import { CacheBoyCluster } from 'cache-boy-client';
+
+const cluster = new CacheBoyCluster({ nodes: ['redis://10.0.0.1:6380', 'redis://10.0.0.2:6380'] });
+await cluster.set('user:1', 'ana');                 // sent to the node owning the key's slot
+await cluster.mget('{user:1}:a', '{user:1}:b');     // hashtags keep related keys on one node
+await cluster.tags.invalidate('user:1');            // broadcast to every node, counts summed
+```
+
+The cluster client computes each key's hash slot (CRC16 + `{hashtag}`), sends the command straight to the owning node, follows `MOVED` redirects and refreshes the slot map. `DBSIZE`, `KEYS`, `FLUSHALL` and `TAG.*` queries are sent to every node and the replies merged. `subscribe` and `keyWatch` listen on every node. Multi-key commands and `multi()` need all their keys on one node, so use a hashtag.

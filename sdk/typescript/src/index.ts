@@ -1,4 +1,5 @@
 export { CacheBoy, parseUrl, type CacheBoyOptions, type ClientEvent } from './client.js';
+export { CacheBoyCluster, keySlot, type CacheBoyClusterOptions } from './cluster.js';
 export { CacheBoyHttp, assertHttpCompatible, type CacheBoyHttpOptions, type FetchLike } from './http.js';
 export {
   CommandsBase,
