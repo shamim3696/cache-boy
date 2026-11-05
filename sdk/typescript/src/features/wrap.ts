@@ -35,12 +35,15 @@ export async function wrap<T>(
   fn: () => Promise<T> | T,
   opts: WrapOptions<T>,
   onStatus?: (s: WrapStatus) => void,
+  /** Runs CACHE.GET. It may wait for another client's compute, so the TCP
+   * client passes a dedicated connection: our own SET must not queue behind it. */
+  waiter: Executor = x,
 ): Promise<T> {
   const args: Arg[] = ['CACHE.GET', key];
   if (opts.lockMs !== undefined) args.push('LOCK', Math.round(opts.lockMs));
   if (opts.waitMs !== undefined) args.push('WAIT', Math.round(opts.waitMs));
   const waitMs = opts.waitMs ?? 5000;
-  const reply = toArr(await x.send(args, { timeoutMs: waitMs + 10_000, retryable: false }));
+  const reply = toArr(await waiter.send(args, { timeoutMs: waitMs + 10_000, retryable: false }));
   const status = (toStr(reply[0]) ?? '').toLowerCase();
   onStatus?.(status as WrapStatus);
 

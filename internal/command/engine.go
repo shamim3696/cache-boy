@@ -115,6 +115,7 @@ func New(cfg *config.Store) *Engine {
 		stop:      make(chan struct{}),
 	}
 	e.propagators.Store(&[]Propagator{})
+	e.OnClientClose(func(c *Client) { e.Watch.RemoveClient(c.ID) })
 	for _, m := range []any{e.Tags, e.RateLimit, e.Locks, e.Queues, e.Watch, e.Flight, e.History} {
 		if d, ok := m.(Dumper); ok {
 			e.dumpers = append(e.dumpers, d)

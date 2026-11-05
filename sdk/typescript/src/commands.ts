@@ -565,7 +565,7 @@ export abstract class CommandsBase implements Executor {
   /** Cache-aside with stampede protection (CACHE.GET). See WrapOptions. */
   wrap<T>(key: string, fn: () => Promise<T> | T, opts: WrapOptions<T>): Promise<T> {
     this.beforeWrite([key]);
-    return wrap(this, key, fn, opts);
+    return wrap(this, key, fn, opts, undefined, this.blockingExecutor());
   }
 
   /** Releases a compute lock taken by CACHE.GET. */
