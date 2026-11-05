@@ -4,6 +4,7 @@ package pubsub
 import (
 	"sort"
 	"sync"
+	"sync/atomic"
 
 	"cache-boy/internal/protocol/resp"
 )
@@ -26,6 +27,7 @@ type Hub struct {
 	channels map[string]map[Subscriber]struct{}
 	patterns map[string]map[Subscriber]struct{}
 	subs     map[Subscriber]*subState
+	active   atomic.Int64 // len(channels)+len(patterns), for lock-free HasSubscribers
 }
 
 func New() *Hub {
@@ -97,12 +99,8 @@ func (h *Hub) Publish(channel, msg string) int {
 	return n
 }
 
-// HasPatternSubscribers is a cheap check used to skip building events nobody listens to.
-func (h *Hub) HasSubscribers() bool {
-	h.mu.RLock()
-	defer h.mu.RUnlock()
-	return len(h.channels) > 0 || len(h.patterns) > 0
-}
+// HasSubscribers is a lock-free check used to skip building events nobody listens to.
+func (h *Hub) HasSubscribers() bool { return h.active.Load() > 0 }
 
 // Channels lists active channels matching pattern ("" = all).
 func (h *Hub) Channels(pattern string) []string {
@@ -134,7 +132,7 @@ func (h *Hub) NumPat() int {
 
 func (h *Hub) add(s Subscriber, names []string, pattern bool) []resp.Value {
 	h.mu.Lock()
-	defer h.mu.Unlock()
+	defer h.unlock()
 	st := h.subs[s]
 	if st == nil {
 		st = &subState{channels: map[string]struct{}{}, patterns: map[string]struct{}{}}
@@ -160,7 +158,7 @@ func (h *Hub) add(s Subscriber, names []string, pattern bool) []resp.Value {
 
 func (h *Hub) remove(s Subscriber, names []string, pattern bool) []resp.Value {
 	h.mu.Lock()
-	defer h.mu.Unlock()
+	defer h.unlock()
 	kind := "unsubscribe"
 	if pattern {
 		kind = "punsubscribe"
@@ -204,4 +202,11 @@ func (h *Hub) remove(s Subscriber, names []string, pattern bool) []resp.Value {
 		delete(h.subs, s)
 	}
 	return out
+}
+
+// unlock publishes the subscription count before releasing the write lock,
+// so the per-write fast path never sees a stale zero.
+func (h *Hub) unlock() {
+	h.active.Store(int64(len(h.channels) + len(h.patterns)))
+	h.mu.Unlock()
 }

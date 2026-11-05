@@ -5,6 +5,7 @@ package blocking
 
 import (
 	"sync"
+	"sync/atomic"
 
 	"cache-boy/internal/store"
 )
@@ -17,7 +18,7 @@ type Waiter struct {
 type Queue struct {
 	mu      sync.Mutex
 	waiters map[string]map[*Waiter]struct{}
-	count   int
+	count   atomic.Int64 // read without the lock on every write
 }
 
 func New(db *store.DB) *Queue {
@@ -36,7 +37,7 @@ func (q *Queue) Register(keys ...string) *Waiter {
 		}
 		q.waiters[k][w] = struct{}{}
 	}
-	q.count++
+	q.count.Add(1)
 	return w
 }
 
@@ -49,19 +50,18 @@ func (q *Queue) Unregister(w *Waiter) {
 			delete(q.waiters, k)
 		}
 	}
-	q.count--
+	q.count.Add(-1)
 }
 
 // Blocked returns the number of waiting clients.
-func (q *Queue) Blocked() int {
-	q.mu.Lock()
-	defer q.mu.Unlock()
-	return q.count
-}
+func (q *Queue) Blocked() int { return int(q.count.Load()) }
 
 func (q *Queue) onEvent(ev store.Event) {
 	switch ev.Op {
 	case "expired", "evicted", "del", "flushall":
+		return
+	}
+	if q.count.Load() == 0 {
 		return
 	}
 	q.mu.Lock()

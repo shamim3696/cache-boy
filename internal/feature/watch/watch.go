@@ -83,6 +83,7 @@ type Hub struct {
 	patterns map[pattern]map[int64]Subscriber
 	clients  map[int64]*watcher
 	hooks    map[string]*Webhook // ns + "\x00" + id
+	active   atomic.Int64        // len(patterns)+len(hooks), read on every write
 
 	queue     chan delivery
 	stop      chan struct{}
@@ -139,7 +140,7 @@ func (h *Hub) Close() {
 // confirmations ["keywatch", pattern, count].
 func (h *Hub) Watch(s Subscriber, ns string, globs ...string) []resp.Value {
 	h.mu.Lock()
-	defer h.mu.Unlock()
+	defer h.unlock()
 	id := s.ClientID()
 	w := h.clients[id]
 	if w == nil {
@@ -165,7 +166,7 @@ func (h *Hub) Watch(s Subscriber, ns string, globs ...string) []resp.Value {
 // and returns the confirmations ["keyunwatch", pattern, count].
 func (h *Hub) Unwatch(s Subscriber, ns string, globs ...string) []resp.Value {
 	h.mu.Lock()
-	defer h.mu.Unlock()
+	defer h.unlock()
 	id := s.ClientID()
 	w := h.clients[id]
 	if len(globs) == 0 && w != nil {
@@ -205,7 +206,7 @@ func (h *Hub) Unwatch(s Subscriber, ns string, globs ...string) []resp.Value {
 // RemoveClient drops every pattern of a client (call on disconnect).
 func (h *Hub) RemoveClient(id int64) {
 	h.mu.Lock()
-	defer h.mu.Unlock()
+	defer h.unlock()
 	w := h.clients[id]
 	if w == nil {
 		return
@@ -248,14 +249,14 @@ func (h *Hub) AddWebhook(ns, id, pat, url, secret string) {
 		}
 	})
 	h.mu.Lock()
-	defer h.mu.Unlock()
+	defer h.unlock()
 	h.hooks[hookKey(ns, id)] = &Webhook{NS: ns, ID: id, Pattern: pat, URL: url, Secret: secret}
 }
 
 // DelWebhook removes a webhook. Returns true if it existed.
 func (h *Hub) DelWebhook(ns, id string) bool {
 	h.mu.Lock()
-	defer h.mu.Unlock()
+	defer h.unlock()
 	k := hookKey(ns, id)
 	_, ok := h.hooks[k]
 	delete(h.hooks, k)
@@ -383,6 +384,9 @@ func (h *Hub) Notify(ev store.Event) {
 	if h.ps != nil && h.ps.HasSubscribers() {
 		h.ps.Publish("__key__:"+ev.Key, ev.Op)
 	}
+	if h.active.Load() == 0 {
+		return
+	}
 	h.mu.RLock()
 	defer h.mu.RUnlock()
 	if len(h.patterns) == 0 && len(h.hooks) == 0 {
@@ -425,4 +429,11 @@ func (h *Hub) Notify(ev store.Event) {
 			h.Dropped.Add(1)
 		}
 	}
+}
+
+// unlock publishes the subscription count before releasing the write lock,
+// so the per-write fast path never sees a stale zero.
+func (h *Hub) unlock() {
+	h.active.Store(int64(len(h.patterns) + len(h.hooks)))
+	h.mu.Unlock()
 }

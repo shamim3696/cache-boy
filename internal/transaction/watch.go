@@ -22,6 +22,7 @@ type Manager struct {
 	mu       sync.Mutex
 	watchers map[string]map[*Watcher]struct{}
 	all      map[*Watcher]struct{}
+	active   atomic.Int64 // len(all), read without the lock on every write
 }
 
 func New(db *store.DB) *Manager {
@@ -38,6 +39,7 @@ func (m *Manager) Watch(w *Watcher, keys ...string) *Watcher {
 	m.mu.Lock()
 	defer m.mu.Unlock()
 	m.all[w] = struct{}{}
+	m.active.Store(int64(len(m.all)))
 	for _, k := range keys {
 		if m.watchers[k] == nil {
 			m.watchers[k] = map[*Watcher]struct{}{}
@@ -62,10 +64,14 @@ func (m *Manager) Unwatch(w *Watcher) {
 		}
 	}
 	delete(m.all, w)
+	m.active.Store(int64(len(m.all)))
 	w.keys = nil
 }
 
 func (m *Manager) onEvent(ev store.Event) {
+	if m.active.Load() == 0 { // fast path: every write lands here
+		return
+	}
 	m.mu.Lock()
 	defer m.mu.Unlock()
 	if ev.Op == "flushall" {

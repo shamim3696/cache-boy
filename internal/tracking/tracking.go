@@ -8,6 +8,7 @@ package tracking
 import (
 	"strings"
 	"sync"
+	"sync/atomic"
 
 	"cache-boy/internal/protocol/resp"
 	"cache-boy/internal/store"
@@ -33,6 +34,7 @@ type Table struct {
 	mu      sync.Mutex
 	clients map[int64]*state
 	keys    map[string]map[int64]struct{} // key → clients that read it
+	n       atomic.Int64                  // len(clients), read without the lock on every write
 }
 
 func New(db *store.DB) *Table {
@@ -45,6 +47,7 @@ func (t *Table) Enable(c Client, opts Options) {
 	t.mu.Lock()
 	defer t.mu.Unlock()
 	t.clients[c.ClientID()] = &state{c, opts}
+	t.n.Store(int64(len(t.clients)))
 }
 
 // Disable stops tracking for c. Remembered keys are cleaned lazily.
@@ -52,6 +55,7 @@ func (t *Table) Disable(c Client) {
 	t.mu.Lock()
 	defer t.mu.Unlock()
 	delete(t.clients, c.ClientID())
+	t.n.Store(int64(len(t.clients)))
 }
 
 func (t *Table) Enabled(c Client) bool {
@@ -85,6 +89,9 @@ func (t *Table) TrackedKeys() int {
 }
 
 func (t *Table) onEvent(ev store.Event) {
+	if t.n.Load() == 0 { // fast path: every write lands here
+		return
+	}
 	t.mu.Lock()
 	defer t.mu.Unlock()
 	if len(t.clients) == 0 {

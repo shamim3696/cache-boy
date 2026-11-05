@@ -12,6 +12,7 @@ package tags
 import (
 	"sort"
 	"sync"
+	"sync/atomic"
 
 	"cache-boy/internal/store"
 )
@@ -23,6 +24,7 @@ type Index struct {
 	mu    sync.RWMutex
 	byTag map[string]set // tag → keys
 	byKey map[string]set // key → tags
+	n     atomic.Int64   // len(byKey), so the per-write listener can skip locking
 }
 
 func New(db *store.DB) *Index {
@@ -35,7 +37,7 @@ func New(db *store.DB) *Index {
 // hold the key's shard lock and the key must exist.
 func (x *Index) Tag(key string, tags ...string) int {
 	x.mu.Lock()
-	defer x.mu.Unlock()
+	defer x.unlock()
 	n := 0
 	for _, t := range tags {
 		ks := x.byKey[key]
@@ -61,7 +63,7 @@ func (x *Index) Tag(key string, tags ...string) int {
 // Untag removes tags from key and returns how many were removed.
 func (x *Index) Untag(key string, tags ...string) int {
 	x.mu.Lock()
-	defer x.mu.Unlock()
+	defer x.unlock()
 	ks := x.byKey[key]
 	if ks == nil {
 		return 0
@@ -84,7 +86,7 @@ func (x *Index) Untag(key string, tags ...string) int {
 // RemoveKey forgets every tag of key.
 func (x *Index) RemoveKey(key string) {
 	x.mu.Lock()
-	defer x.mu.Unlock()
+	defer x.unlock()
 	x.removeKeyLocked(key)
 }
 
@@ -137,7 +139,7 @@ func (x *Index) Has(key string) bool {
 // Clear drops the whole index.
 func (x *Index) Clear() {
 	x.mu.Lock()
-	defer x.mu.Unlock()
+	defer x.unlock()
 	x.byTag = map[string]set{}
 	x.byKey = map[string]set{}
 }
@@ -162,6 +164,9 @@ func (x *Index) Dump(emit func(args []string)) {
 }
 
 func (x *Index) onEvent(ev store.Event) {
+	if x.n.Load() == 0 && ev.Op != "flushall" {
+		return
+	}
 	switch ev.Op {
 	case "flushall":
 		x.Clear()
@@ -205,4 +210,10 @@ func sorted(s set) []string {
 	}
 	sort.Strings(out)
 	return out
+}
+
+// unlock publishes the key count before releasing the write lock.
+func (x *Index) unlock() {
+	x.n.Store(int64(len(x.byKey)))
+	x.mu.Unlock()
 }
