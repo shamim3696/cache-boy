@@ -198,3 +198,31 @@ func TestReplicationNotConfigured(t *testing.T) {
 		t.Fatalf("WAIT: %v", v)
 	}
 }
+
+func TestReplicationMasterAuth(t *testing.T) {
+	leader, _, addr := startLeader(t)
+	if err := leader.SetConfig("requirepass", "s3cret"); err != nil {
+		t.Fatal(err)
+	}
+	lc := leader.NewClient("tcp", "test")
+	mustOK(t, leader, lc, "AUTH", "s3cret")
+	mustOK(t, leader, lc, "infratset", "k", "protected")
+
+	follower, _ := newFollower(t)
+	fc := follower.NewClient("tcp", "test")
+	host, port, _ := net.SplitHostPort(addr)
+
+	// Wrong password: the link never comes up.
+	mustOK(t, follower, fc, "CONFIG", "SET", "masterauth", "wrong")
+	mustOK(t, follower, fc, "REPLICAOF", host, port)
+	time.Sleep(300 * time.Millisecond)
+	if getVal(follower, fc, "k") != "" {
+		t.Fatal("synced with a wrong masterauth")
+	}
+
+	// Right password: full sync works.
+	mustOK(t, follower, fc, "REPLICAOF", "NO", "ONE")
+	mustOK(t, follower, fc, "CONFIG", "SET", "masterauth", "s3cret")
+	mustOK(t, follower, fc, "REPLICAOF", host, port)
+	eventually(t, "authenticated sync", func() bool { return getVal(follower, fc, "k") == "protected" })
+}

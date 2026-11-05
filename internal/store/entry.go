@@ -151,10 +151,10 @@ func (s *String) Bytes() []byte {
 	return b
 }
 
-func (s *String) Len() int          { return s.n }
-func (s *String) Compressed() bool  { return s.compressed }
-func (s *String) StoredSize() int   { return len(s.data) }
-func (s *String) MemSize() int64    { return int64(len(s.data)) + 24 }
+func (s *String) Len() int         { return s.n }
+func (s *String) Compressed() bool { return s.compressed }
+func (s *String) StoredSize() int  { return len(s.data) }
+func (s *String) MemSize() int64   { return int64(len(s.data)) + 24 }
 
 // Hash is a field → value map with byte accounting.
 type Hash struct {
@@ -187,9 +187,9 @@ func (h *Hash) Del(field string) bool {
 	return ok
 }
 
-func (h *Hash) Len() int                { return len(h.m) }
-func (h *Hash) Map() map[string]string  { return h.m } // read-only use
-func (h *Hash) MemSize() int64          { return h.bytes + int64(len(h.m))*48 + 48 }
+func (h *Hash) Len() int               { return len(h.m) }
+func (h *Hash) Map() map[string]string { return h.m } // read-only use
+func (h *Hash) MemSize() int64         { return h.bytes + int64(len(h.m))*48 + 48 }
 
 // Set is a set of strings with byte accounting.
 type Set struct {

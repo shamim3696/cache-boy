@@ -24,6 +24,7 @@ import (
 	"cache-boy/internal/feature/queue"
 	"cache-boy/internal/feature/ratelimit"
 	"cache-boy/internal/feature/scripting"
+	"cache-boy/internal/feature/semcache"
 	"cache-boy/internal/feature/singleflight"
 	"cache-boy/internal/feature/tags"
 	"cache-boy/internal/feature/watch"
@@ -62,6 +63,7 @@ type Engine struct {
 	Flight    *singleflight.Group
 	History   *history.Store
 	Scripts   *scripting.Scripts
+	SemCache  *semcache.Manager
 
 	// Optional subsystems, set by main before serving (nil = disabled).
 	Persist Persister
@@ -109,6 +111,7 @@ func New(cfg *config.Store) *Engine {
 		Flight:    singleflight.New(db),
 		History:   history.New(db, cfg),
 		Scripts:   scripting.New(),
+		SemCache:  semcache.New(),
 		StartTime: time.Now(),
 		RunID:     randomHex(20),
 		clients:   map[int64]*Client{},
@@ -116,7 +119,7 @@ func New(cfg *config.Store) *Engine {
 	}
 	e.propagators.Store(&[]Propagator{})
 	e.OnClientClose(func(c *Client) { e.Watch.RemoveClient(c.ID) })
-	for _, m := range []any{e.Tags, e.RateLimit, e.Locks, e.Queues, e.Watch, e.Flight, e.History} {
+	for _, m := range []any{e.Tags, e.RateLimit, e.Locks, e.Queues, e.Watch, e.Flight, e.History, e.SemCache} {
 		if d, ok := m.(Dumper); ok {
 			e.dumpers = append(e.dumpers, d)
 		}

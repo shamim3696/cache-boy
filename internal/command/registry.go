@@ -18,18 +18,18 @@ import (
 type Flag uint32
 
 const (
-	FlagWrite    Flag = 1 << iota // modifies data: emits key events, goes to AOF/replicas
-	FlagReadOnly                  // reads data: client-side caching remembers its keys
-	FlagAdmin                     // server administration
-	FlagNoAuth                    // allowed before AUTH (AUTH, HELLO, QUIT)
-	FlagAllKeys                   // locks every shard (KEYS, FLUSHALL, EXEC, EVAL...)
-	FlagBlocking                  // may wait for a key to change (BLPOP)
-	FlagNoMulti                   // runs immediately even inside MULTI (EXEC, DISCARD, WATCH)
-	FlagPubSub                    // allowed in RESP2 subscriber mode
-	FlagDenyOOM                   // may grow memory: refused/evicts when over maxmemory
-	FlagNoPropagate               // never written to AOF/replicas (EXEC, EVAL propagate their effects)
-	FlagNoScript                  // not callable from scripts
-	FlagLoading                   // allowed while loading data
+	FlagWrite       Flag = 1 << iota // modifies data: emits key events, goes to AOF/replicas
+	FlagReadOnly                     // reads data: client-side caching remembers its keys
+	FlagAdmin                        // server administration
+	FlagNoAuth                       // allowed before AUTH (AUTH, HELLO, QUIT)
+	FlagAllKeys                      // locks every shard (KEYS, FLUSHALL, EXEC, EVAL...)
+	FlagBlocking                     // may wait for a key to change (BLPOP)
+	FlagNoMulti                      // runs immediately even inside MULTI (EXEC, DISCARD, WATCH)
+	FlagPubSub                       // allowed in RESP2 subscriber mode
+	FlagDenyOOM                      // may grow memory: refused/evicts when over maxmemory
+	FlagNoPropagate                  // never written to AOF/replicas (EXEC, EVAL propagate their effects)
+	FlagNoScript                     // not callable from scripts
+	FlagLoading                      // allowed while loading data
 )
 
 // Spec describes one command.

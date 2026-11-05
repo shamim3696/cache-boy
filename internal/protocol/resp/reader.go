@@ -2,6 +2,7 @@ package resp
 
 import (
 	"bufio"
+	"bytes"
 	"errors"
 	"fmt"
 	"io"
@@ -11,6 +12,7 @@ import (
 const (
 	MaxBulkLen  = 512 << 20 // 512 MB, same as Redis
 	MaxArrayLen = 1 << 20
+	eagerAlloc  = 64 << 10 // bulk strings up to this size are allocated up front
 )
 
 // ProtocolError means the peer sent bytes that are not valid RESP. The
@@ -68,8 +70,8 @@ func (r *Reader) ReadCommand() ([]string, error) {
 		if n > MaxArrayLen {
 			return nil, protoErr("invalid multibulk length")
 		}
-		args := make([]string, n)
-		for i := range args {
+		args := make([]string, 0, min(n, 1024)) // same reasoning as eagerAlloc
+		for range n {
 			c, err := r.r.ReadByte()
 			if err != nil {
 				return nil, err
@@ -84,7 +86,7 @@ func (r *Reader) ReadCommand() ([]string, error) {
 			if null {
 				return nil, protoErr("null bulk string in command")
 			}
-			args[i] = s
+			args = append(args, s)
 		}
 		return args, nil
 	}
@@ -197,9 +199,23 @@ func (r *Reader) readBulkBody() (s string, null bool, err error) {
 	if n > MaxBulkLen {
 		return "", false, protoErr("invalid bulk length")
 	}
-	buf := make([]byte, n+2)
-	if _, err := io.ReadFull(r.r, buf); err != nil {
-		return "", false, err
+	var buf []byte
+	if n <= eagerAlloc {
+		buf = make([]byte, n+2)
+		if _, err := io.ReadFull(r.r, buf); err != nil {
+			return "", false, err
+		}
+	} else {
+		// Grow as data arrives: a peer announcing 512 MB must actually send
+		// it before we hold that much memory.
+		var b bytes.Buffer
+		if _, err := io.CopyN(&b, r.r, n+2); err != nil {
+			if err == io.EOF {
+				err = io.ErrUnexpectedEOF
+			}
+			return "", false, err
+		}
+		buf = b.Bytes()
 	}
 	if buf[n] != '\r' || buf[n+1] != '\n' {
 		return "", false, protoErr("bulk string not terminated by CRLF")

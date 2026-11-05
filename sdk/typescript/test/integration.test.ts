@@ -149,6 +149,31 @@ describe('integration (TCP)', { skip }, () => {
     await l2.release();
   });
 
+  it('semanticCache: similar prompts hit, wrap computes once', async () => {
+    // Toy embedding: bag of words hashed into 16 buckets (stands in for a real model).
+    const embed = (text: string): number[] => {
+      const v = new Array<number>(16).fill(0);
+      for (const w of text.toLowerCase().match(/[a-z]+/g) ?? []) {
+        let h = 0;
+        for (const ch of w) h = (h * 31 + ch.charCodeAt(0)) >>> 0;
+        v[h % 16] += 1;
+      }
+      return v;
+    };
+    const llm = c.semanticCache(`${p}llm`, { embed, threshold: 0.8, ttl: '1h' });
+    let calls = 0;
+    const ask = (q: string) => llm.wrap(q, () => { calls++; return `answer to: ${q}`; });
+    assert.equal(await ask('what is the capital of france'), 'answer to: what is the capital of france');
+    assert.equal(await ask('What is the capital of France?'), 'answer to: what is the capital of france');
+    assert.equal(calls, 1);
+    const miss = await llm.get('how do I bake bread');
+    assert.equal(miss.hit, false);
+    const info = await llm.info();
+    assert.equal(info.entries, 1);
+    assert.ok(info.hits >= 1);
+    assert.equal(await llm.drop(), 1);
+  });
+
   it('rateLimit', async () => {
     const k = `${p}rl`;
     const a = await c.rateLimit(k, 2, '1m');

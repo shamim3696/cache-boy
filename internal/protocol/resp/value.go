@@ -42,23 +42,23 @@ type Value struct {
 
 var OK = Simple("OK")
 
-func Simple(s string) Value       { return Value{Type: TypeSimple, Str: s} }
-func Bulk(s string) Value         { return Value{Type: TypeBulk, Str: s} }
-func Bytes(b []byte) Value        { return Value{Type: TypeBulk, Str: string(b)} }
-func Int(n int64) Value           { return Value{Type: TypeInteger, Int: n} }
-func Double(f float64) Value      { return Value{Type: TypeDouble, Float: f} }
-func Bool(b bool) Value           { return Value{Type: TypeBool, Bool: b} }
-func Null() Value                 { return Value{Type: TypeNull} }
-func NullArray() Value            { return Value{Type: TypeNull, nullArray: true} }
-func Array(vs ...Value) Value     { return Value{Type: TypeArray, Elems: nonNil(vs)} }
-func SetOf(vs ...Value) Value     { return Value{Type: TypeSet, Elems: nonNil(vs)} }
-func Push(vs ...Value) Value      { return Value{Type: TypePush, Elems: nonNil(vs)} }
-func Multi(vs ...Value) Value     { return Value{Type: typeMulti, Elems: vs} }
-func None() Value                 { return Value{Type: typeNone} }
-func (v Value) IsNone() bool      { return v.Type == typeNone }
-func (v Value) IsMulti() bool     { return v.Type == typeMulti }
-func (v Value) IsError() bool     { return v.Type == TypeError }
-func (v Value) IsNull() bool      { return v.Type == TypeNull }
+func Simple(s string) Value   { return Value{Type: TypeSimple, Str: s} }
+func Bulk(s string) Value     { return Value{Type: TypeBulk, Str: s} }
+func Bytes(b []byte) Value    { return Value{Type: TypeBulk, Str: string(b)} }
+func Int(n int64) Value       { return Value{Type: TypeInteger, Int: n} }
+func Double(f float64) Value  { return Value{Type: TypeDouble, Float: f} }
+func Bool(b bool) Value       { return Value{Type: TypeBool, Bool: b} }
+func Null() Value             { return Value{Type: TypeNull} }
+func NullArray() Value        { return Value{Type: TypeNull, nullArray: true} }
+func Array(vs ...Value) Value { return Value{Type: TypeArray, Elems: nonNil(vs)} }
+func SetOf(vs ...Value) Value { return Value{Type: TypeSet, Elems: nonNil(vs)} }
+func Push(vs ...Value) Value  { return Value{Type: TypePush, Elems: nonNil(vs)} }
+func Multi(vs ...Value) Value { return Value{Type: typeMulti, Elems: vs} }
+func None() Value             { return Value{Type: typeNone} }
+func (v Value) IsNone() bool  { return v.Type == typeNone }
+func (v Value) IsMulti() bool { return v.Type == typeMulti }
+func (v Value) IsError() bool { return v.Type == TypeError }
+func (v Value) IsNull() bool  { return v.Type == TypeNull }
 
 // Err returns an error reply. msg should start with an error code such as
 // "ERR" or "WRONGTYPE"; if it doesn't, "ERR " is added.

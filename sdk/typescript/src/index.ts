@@ -26,6 +26,7 @@ export { RespParser, encodeCommand, encodeCommands, type Arg, type ParserHandler
 export { ClientCache, LruCache, type ClientCacheOptions, type CacheStats, type ReadToken } from './cache.js';
 export { Tags } from './features/tags.js';
 export { type RateLimitResult } from './features/ratelimit.js';
+export { SemanticCache, type SemanticCacheOptions, type SemanticHit, type SemanticCacheInfo, type EmbedFn } from './features/semcache.js';
 export { Lock, type LockOptions, type LockInfo } from './features/lock.js';
 export {
   Queue,

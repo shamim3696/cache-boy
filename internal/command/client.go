@@ -65,11 +65,11 @@ func newClient(id int64, kind, addr string) *Client {
 	return c
 }
 
-func (c *Client) ClientID() int64 { return c.ID }
-func (c *Client) Proto() int      { return int(c.proto.Load()) }
-func (c *Client) SetProto(p int)  { c.proto.Store(int32(p)) }
-func (c *Client) Name() string    { return *c.name.Load() }
-func (c *Client) SetName(n string) { c.name.Store(&n) }
+func (c *Client) ClientID() int64     { return c.ID }
+func (c *Client) Proto() int          { return int(c.proto.Load()) }
+func (c *Client) SetProto(p int)      { c.proto.Store(int32(p)) }
+func (c *Client) Name() string        { return *c.name.Load() }
+func (c *Client) SetName(n string)    { c.name.Store(&n) }
 func (c *Client) LastCommand() string { return *c.lastCmd.Load() }
 func (c *Client) Idle() time.Duration {
 	return time.Since(time.UnixMilli(c.lastActive.Load()))

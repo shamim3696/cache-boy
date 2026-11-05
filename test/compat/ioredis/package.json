@@ -1,0 +1,7 @@
+{
+  "name": "cache-boy-ioredis-compat",
+  "private": true,
+  "description": "Runs common ioredis usage against a cache-boy server: npm install && npm test -- <port>",
+  "scripts": { "test": "node compat.js" },
+  "dependencies": { "ioredis": "^5.11.1" }
+}

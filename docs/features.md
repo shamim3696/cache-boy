@@ -177,3 +177,24 @@ Send `HELLO 3`, then `CLIENT TRACKING ON [BCAST] [PREFIX p ...] [NOLOOP]`. Every
 ## Compression
 
 `CONFIG SET compression-threshold 4096` stores string values of 4 KB or more DEFLATE-compressed, which is transparent to clients. `OBJECT ENCODING key` returns `compressed` for such values.
+
+## Semantic cache (for LLM apps)
+
+This cache answers a prompt with the cached response of a *similar* earlier prompt. For example, "What's the capital of France?" can hit the cached answer of "capital of france?", which saves a slow, paid model call. The server never calls a model: clients send embedding vectors, so any embedding model works. Vectors are written as a JSON array (`[0.1,0.2,...]`) or comma-separated values.
+
+| Command | Reply |
+|---|---|
+| `SCACHE.SET name vector response [PROMPT text] [EX s\|PX <duration>\|PXAT ms] [ID id]` | entry id |
+| `SCACHE.GET name vector [PROMPT text] [THRESHOLD t]` | `[status, response, score, id]`. `status` is `hit` or `miss`. On a miss, `score` is the best similarity found, or null if the cache is empty. |
+| `SCACHE.DEL name id` | integer 1/0 |
+| `SCACHE.CONFIG name [THRESHOLD t] [MAXENTRIES n]` | OK. The default threshold is 0.92 (cosine) and MAXENTRIES defaults to 10000; when full, the least recently used entries are evicted. |
+| `SCACHE.INFO name` | map `{entries, dim, threshold, maxentries, hits, misses, hit_ratio}` |
+| `SCACHE.DROP name` | integer: entries deleted |
+
+`PROMPT` stores the exact text, so a repeated identical prompt hits without a vector search. Cache names are namespaced. Caches are persisted (snapshot/AOF) and replicated. LRU eviction is decided by the leader and propagated as `SCACHE.DEL`.
+
+TypeScript SDK:
+```ts
+const llm = cache.semanticCache("answers", { embed: (t) => openai.embed(t), threshold: 0.9, ttl: "1d" });
+const answer = await llm.wrap(question, () => openai.chat(question));
+```

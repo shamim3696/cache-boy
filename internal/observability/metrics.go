@@ -15,20 +15,20 @@ import (
 var buckets = []int64{10, 50, 100, 250, 500, 1000, 5000, 10000, 50000, 100000, 1000000}
 
 type CommandStats struct {
-	Calls    atomic.Int64
-	Errors   atomic.Int64
-	Usec     atomic.Int64
-	Buckets  [12]atomic.Int64 // len(buckets)+1, last is +Inf
+	Calls   atomic.Int64
+	Errors  atomic.Int64
+	Usec    atomic.Int64
+	Buckets [12]atomic.Int64 // len(buckets)+1, last is +Inf
 }
 
 type Metrics struct {
-	Started           time.Time
-	TotalCommands     atomic.Int64
-	TotalConnections  atomic.Int64
-	RejectedConns     atomic.Int64
-	ConnectedClients  atomic.Int64
-	NetInputBytes     atomic.Int64
-	NetOutputBytes    atomic.Int64
+	Started          time.Time
+	TotalCommands    atomic.Int64
+	TotalConnections atomic.Int64
+	RejectedConns    atomic.Int64
+	ConnectedClients atomic.Int64
+	NetInputBytes    atomic.Int64
+	NetOutputBytes   atomic.Int64
 
 	mu       sync.RWMutex
 	commands map[string]*CommandStats

@@ -37,19 +37,21 @@ type Config struct {
 	MaxMemorySamples int
 	HZ               int // background task frequency (active expiry etc.)
 
-	Dir            string
-	DBFilename     string
-	Save           []SaveRule
-	AppendOnly     bool
-	AppendFilename string
-	AppendFsync    string // always, everysec, no
+	Dir                      string
+	DBFilename               string
+	Save                     []SaveRule
+	AppendOnly               bool
+	AppendFilename           string
+	AppendFsync              string // always, everysec, no
 	AutoAOFRewritePercentage int
 	AutoAOFRewriteMinSize    int64
 
 	CompressionThreshold int // compress string values >= this many bytes; 0 = off
 	HistoryDepth         int // versions kept per string key; 0 = off
 
-	ReplicaOf string // "host port" or "" for leader
+	ReplicaOf  string // "host port" or "" for leader
+	MasterAuth string // password used to authenticate to the leader
+	MasterUser string // ACL user for MasterAuth ("" = default)
 
 	ClusterEnabled bool
 	ClusterNodeID  string
@@ -222,6 +224,10 @@ func (c *Config) set(name string, vals []string) error {
 			v = ""
 		}
 		c.ReplicaOf = v
+	case "masterauth":
+		c.MasterAuth = v
+	case "masteruser":
+		c.MasterUser = v
 	case "cluster-enabled":
 		c.ClusterEnabled, err = parseBool(v)
 	case "cluster-node-id":
@@ -274,6 +280,8 @@ func (c *Config) Params(pattern string) [][2]string {
 		"compression-threshold":       strconv.Itoa(c.CompressionThreshold),
 		"history-depth":               strconv.Itoa(c.HistoryDepth),
 		"replicaof":                   c.ReplicaOf,
+		"masterauth":                  c.MasterAuth,
+		"masteruser":                  c.MasterUser,
 		"cluster-enabled":             formatBool(c.ClusterEnabled),
 		"cluster-node-id":             c.ClusterNodeID,
 		"raft-port":                   strconv.Itoa(c.RaftPort),

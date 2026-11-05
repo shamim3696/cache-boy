@@ -8,6 +8,7 @@ import { type LockInfo, type LockOptions, Lock, acquireLock, lockInfo, withLock 
 import { JsonDocs } from './features/json.js';
 import { Queue } from './features/queue.js';
 import { type RateLimitResult, rateLimit, rateLimitPeek, rateLimitReset } from './features/ratelimit.js';
+import { SemanticCache, type SemanticCacheOptions } from './features/semcache.js';
 import { Tags } from './features/tags.js';
 import { TimeSeries } from './features/timeseries.js';
 import { Vectors } from './features/vector.js';
@@ -573,6 +574,11 @@ export abstract class CommandsBase implements Executor {
     return toNum(await this.send(['CACHE.RELEASE', key])) === 1;
   }
 
+  /** Semantic cache for LLM responses: hits on *similar* prompts. Bring your own embedding function. */
+  semanticCache(name: string, opts: SemanticCacheOptions): SemanticCache {
+    return new SemanticCache(this, name, opts);
+  }
+
   /** GCRA rate limit: `limit` requests per `period` (ms, or "1m", "10s"...). */
   rateLimit(key: string, limit: number, period: Duration, opts: { cost?: number } = {}): Promise<RateLimitResult> {
     return rateLimit(this, key, limit, period, opts);
@@ -692,7 +698,7 @@ export function unsupported(command: string, why: string): CacheBoyError {
 
 const NON_BATCHABLE = new Set<string>([
   'wrap', 'withLock', 'subscribe', 'psubscribe', 'keyWatch', 'scanAll', 'evalCached', 'pipeline', 'multi', 'namespace',
-  'blpop', 'brpop', 'queue',
+  'blpop', 'brpop', 'queue', 'semanticCache',
 ]);
 
 class BatchRecorder extends CommandsBase {

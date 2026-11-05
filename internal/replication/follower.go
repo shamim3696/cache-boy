@@ -196,6 +196,22 @@ func (m *Manager) syncOnce(l *link) (synced bool, err error) {
 	}
 
 	// Handshake.
+	if cfg := m.e.Cfg.Get(); cfg.MasterAuth != "" {
+		auth := []string{"AUTH", cfg.MasterAuth}
+		if cfg.MasterUser != "" {
+			auth = []string{"AUTH", cfg.MasterUser, cfg.MasterAuth}
+		}
+		if err := send(auth...); err != nil {
+			return false, err
+		}
+		line, err := readLine()
+		if err != nil {
+			return false, err
+		}
+		if strings.HasPrefix(line, "-") {
+			return false, fmt.Errorf("leader refused AUTH: %s", line[1:])
+		}
+	}
 	if err := send("REPLCONF", "listening-port", strconv.Itoa(m.e.Cfg.Get().Port)); err != nil {
 		return false, err
 	}

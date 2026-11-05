@@ -15,6 +15,7 @@ A Redis-compatible in-memory data store written in Go. It speaks the Redis proto
 | JSON, time series, vectors | Redis Stack modules | Built in |
 | Multi-tenant apps | Key prefixes by convention | `NAMESPACE USE tenant42` |
 | Reads hammering the network | Nothing in ioredis | Client-side caching (RESP3 tracking) in the TS SDK |
+| Paying for the same LLM answer twice | Separate vector DB + glue code | Semantic cache: `SCACHE.GET` hits on *similar* prompts |
 
 It also uses every CPU core: the keyspace is split into shards with their own locks, while Redis runs commands on a single thread.
 
@@ -66,6 +67,7 @@ Every non-Redis command is documented in [docs/features.md](docs/features.md).
 - **Keys**: TTLs (lazy and active expiry), SCAN, RENAME, COPY, OBJECT
 - **Memory**: `maxmemory` with LRU, LFU, random and TTL eviction (approximated like Redis); optional compression of large values
 - **Transactions**: MULTI / EXEC / WATCH, plus atomic server-side JavaScript (`EVAL`)
+- **AI**: semantic cache for LLM responses, vector similarity search
 - **Pub/Sub**: channels and patterns, key-change streams, webhooks
 - **Persistence**: binary snapshots (`SAVE`, `BGSAVE`, save rules) and an append-only file with fsync policies and rewrite
 - **Replication**: leader → replicas with full sync and a command stream, `WAIT`, read-only replicas
@@ -112,13 +114,15 @@ sdk/typescript           Node.js / TypeScript SDK
 
 ```bash
 go test ./...                                    # Go unit and integration tests
+go test -fuzz FuzzReadCommand ./internal/protocol/resp   # fuzz the protocol parser
+cd test/compat/ioredis && npm install && npm test -- 6380  # real ioredis against a running server
 cd sdk/typescript && npm install && npm test     # TypeScript SDK
 CACHEBOY_URL=redis://127.0.0.1:6380 npm test     # SDK against a running server
 ```
 
 ## Known limitations
 
-- Replication always does a full resync on reconnect (no partial resync backlog), and there's no `masterauth`, so a replica can't follow a password-protected leader.
+- Replication always does a full resync on reconnect (no partial resync backlog).
 - Failover can lose writes the new leader hadn't received yet, because replication is asynchronous (as in Redis).
 - Cluster slots are a static map from the config; there's no resharding or gossip.
 - Snapshots and AOF rewrites briefly lock all shards and need a temporary in-memory copy of the dataset, because Go can't `fork()` like Redis.
