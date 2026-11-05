@@ -329,6 +329,7 @@ func (e *Engine) run(ctx *Ctx, locked bool) resp.Value {
 		}
 	}
 	if c.Namespace != "" {
+		ctx.Args = append([]string(nil), ctx.Args...) // don't rewrite the caller's slice
 		p := namespace.Prefix(c.Namespace)
 		for i, j := range idx {
 			ctx.Args[j] = p + ctx.Args[j]

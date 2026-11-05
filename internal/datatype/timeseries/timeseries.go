@@ -59,6 +59,11 @@ func (s *Series) Latest() (Sample, bool) {
 // Range returns samples with from <= ts <= to. With agg != "" samples are
 // grouped into buckets of bucketMs and aggregated.
 func (s *Series) Range(from, to int64, agg string, bucketMs int64) ([]Sample, error) {
+	if agg != "" {
+		if _, err := aggregate(agg, []Sample{{}}); err != nil {
+			return nil, err
+		}
+	}
 	lo := sort.Search(len(s.samples), func(i int) bool { return s.samples[i].TS >= from })
 	hi := sort.Search(len(s.samples), func(i int) bool { return s.samples[i].TS > to })
 	if lo >= hi {

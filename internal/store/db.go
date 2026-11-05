@@ -285,6 +285,8 @@ func isEmpty(e *Entry) bool {
 		return e.Set().Len() == 0
 	case KindZSet:
 		return e.ZSet().Len() == 0
+	case KindVector:
+		return e.Vectors().Len() == 0
 	}
 	return false
 }
