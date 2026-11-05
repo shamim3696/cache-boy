@@ -1,0 +1,13 @@
+# binaries
+/bin/
+*.exe
+*.test
+*.out
+
+# runtime data
+*.aof
+*.cbdump
+*.log
+
+.env
+coverage.*
