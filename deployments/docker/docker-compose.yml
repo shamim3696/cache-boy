@@ -1,0 +1,15 @@
+# docker compose -f deployments/docker/docker-compose.yml up
+# Starts a leader and a replica. Dashboard: http://localhost:6381
+services:
+  leader:
+    build: { context: ../.., dockerfile: deployments/docker/Dockerfile }
+    command: ["--appendonly", "yes"]
+    ports: ["6380:6380", "6381:6381"]
+    volumes: ["leader-data:/data"]
+  replica:
+    build: { context: ../.., dockerfile: deployments/docker/Dockerfile }
+    command: ["--replicaof", "leader", "6380", "--http-port", "6381"]
+    ports: ["6390:6380", "6391:6381"]
+    depends_on: [leader]
+volumes:
+  leader-data:

@@ -11,3 +11,6 @@
 
 .env
 coverage.*
+
+# agent worktrees / local tooling
+.claude/
