@@ -2,6 +2,7 @@ package command_test
 
 import (
 	"net"
+	"strconv"
 	"strings"
 	"testing"
 	"time"
@@ -139,7 +140,7 @@ func TestReplicationReconnect(t *testing.T) {
 	eventually(t, "first write", func() bool { return getVal(follower, fc, "a") == "1" })
 
 	// Kill the replica link from the leader side: the follower notices,
-	// reconnects with backoff and does a full resync.
+	// reconnects with backoff and continues from the backlog (PSYNC).
 	syncs := infoField(follower, "replication", "master_sync_count")
 	for _, cl := range leader.Clients() {
 		if cl.LastCommand() == "sync" {
@@ -147,9 +148,12 @@ func TestReplicationReconnect(t *testing.T) {
 		}
 	}
 	eventually(t, "reconnect", func() bool {
-		return infoField(follower, "replication", "master_sync_count") != syncs &&
+		return infoField(leader, "replication", "sync_partial_ok") == "1" &&
 			infoField(follower, "replication", "master_link_status") == "up"
 	})
+	if infoField(follower, "replication", "master_sync_count") != syncs {
+		t.Fatal("reconnect did a full sync instead of a partial one")
+	}
 	mustOK(t, leader, lc, "infratset", "b", "2")
 	eventually(t, "resync after link loss", func() bool { return getVal(follower, fc, "b") == "2" })
 	mustOK(t, leader, lc, "infratset", "c", "3")
@@ -225,4 +229,72 @@ func TestReplicationMasterAuth(t *testing.T) {
 	mustOK(t, follower, fc, "CONFIG", "SET", "masterauth", "s3cret")
 	mustOK(t, follower, fc, "REPLICAOF", host, port)
 	eventually(t, "authenticated sync", func() bool { return getVal(follower, fc, "k") == "protected" })
+}
+
+func TestReplicationPartialResync(t *testing.T) {
+	leader, _, addr := startLeader(t)
+	lc := leader.NewClient("tcp", "test")
+	mustOK(t, leader, lc, "infratset", "k", "v0")
+
+	follower, _ := newFollower(t)
+	fc := follower.NewClient("tcp", "test")
+	host, port, _ := net.SplitHostPort(addr)
+	mustOK(t, follower, fc, "REPLICAOF", host, port)
+	eventually(t, "full sync", func() bool { return getVal(follower, fc, "k") == "v0" })
+
+	// Cut the replication link from the leader side, then write while the
+	// replica is away.
+	for _, c := range leader.Clients() {
+		if cmd := c.LastCommand(); cmd == "sync" || cmd == "psync" {
+			c.Close()
+		}
+	}
+	for i := 1; i <= 50; i++ {
+		mustOK(t, leader, lc, "infratset", "k", "v"+strconv.Itoa(i))
+	}
+	eventually(t, "catch up", func() bool { return getVal(follower, fc, "k") == "v50" })
+	if got := infoField(leader, "replication", "sync_partial_ok"); got != "1" {
+		t.Fatalf("sync_partial_ok = %s, want 1", got)
+	}
+	if got := infoField(leader, "replication", "sync_full"); got != "1" {
+		t.Fatalf("sync_full = %s, want 1 (reconnect must not resend the snapshot)", got)
+	}
+	mustOK(t, leader, lc, "infratset", "after", "reconnect")
+	eventually(t, "stream after partial resync", func() bool { return getVal(follower, fc, "after") == "reconnect" })
+}
+
+func TestReplicationBacklogOverflowFallsBackToFullSync(t *testing.T) {
+	e := infraEngine(t, nil)
+	m := replication.SetupWith(e, replication.Options{
+		PingInterval: 50 * time.Millisecond, AckInterval: 100 * time.Millisecond,
+		Timeout: 5 * time.Second, BacklogSize: 256,
+	})
+	srv := server.New(e)
+	if err := srv.Listen("127.0.0.1:0"); err != nil {
+		t.Fatal(err)
+	}
+	go srv.Serve()
+	t.Cleanup(func() { m.Close(); srv.Close() })
+	lc := e.NewClient("tcp", "test")
+
+	follower, _ := newFollower(t)
+	fc := follower.NewClient("tcp", "test")
+	host, port, _ := net.SplitHostPort(srv.Addr().String())
+	mustOK(t, follower, fc, "REPLICAOF", host, port)
+	mustOK(t, e, lc, "infratset", "k", "start")
+	eventually(t, "sync", func() bool { return getVal(follower, fc, "k") == "start" })
+
+	for _, c := range e.Clients() {
+		if cmd := c.LastCommand(); cmd == "sync" || cmd == "psync" {
+			c.Close()
+		}
+	}
+	// Far more than the 256-byte backlog while the replica is away.
+	for i := 0; i < 100; i++ {
+		mustOK(t, e, lc, "infratset", "k", strings.Repeat("x", 50)+strconv.Itoa(i))
+	}
+	eventually(t, "resync", func() bool { return strings.HasSuffix(getVal(follower, fc, "k"), "x99") })
+	if got := infoField(e, "replication", "sync_full"); got != "2" {
+		t.Fatalf("sync_full = %s, want 2 (backlog was too small)", got)
+	}
 }

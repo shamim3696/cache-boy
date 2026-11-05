@@ -18,7 +18,7 @@ func init() {
 		// FlagAllKeys: the snapshot and the start of the replica's command
 		// stream must be taken atomically with respect to writes.
 		&Spec{Name: "sync", Arity: 1, Flags: FlagAdmin | FlagAllKeys | FlagNoScript | FlagNoMulti, Group: "server", Summary: "Full resynchronisation (used by replicas)", Handler: syncCmd},
-		&Spec{Name: "psync", Arity: -3, Flags: FlagAdmin | FlagAllKeys | FlagNoScript | FlagNoMulti, Group: "server", Summary: "Same as SYNC: always a full resynchronisation", Handler: syncCmd},
+		&Spec{Name: "psync", Arity: -3, Flags: FlagAdmin | FlagAllKeys | FlagNoScript | FlagNoMulti, Group: "server", Summary: "PSYNC replid offset: partial resync from the backlog, or a full one", Handler: syncCmd},
 		&Spec{Name: "replconf", Arity: -1, Flags: FlagAdmin | FlagNoScript, Group: "server", Summary: "Replica handshake options (listening-port, capa, ack)", Handler: replconfCmd},
 		&Spec{Name: "wait", Arity: 3, Flags: FlagNoScript, Group: "server", Summary: "WAIT numreplicas timeout-ms: waits until replicas acknowledged previous writes", Handler: waitCmd},
 		&Spec{Name: "raft.status", Arity: 1, Group: "server", Summary: "Raft election state of this node: id, state, term, leader", Handler: raftStatusCmd},

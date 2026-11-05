@@ -52,6 +52,9 @@ type Config struct {
 	ReplicaOf  string // "host port" or "" for leader
 	MasterAuth string // password used to authenticate to the leader
 	MasterUser string // ACL user for MasterAuth ("" = default)
+	// ReplBacklogSize is how many bytes of recent writes a leader keeps so a
+	// reconnecting replica can catch up without a full resync.
+	ReplBacklogSize int64
 
 	ClusterEnabled bool
 	ClusterNodeID  string
@@ -83,6 +86,7 @@ func Default() *Config {
 		AppendFsync:              "everysec",
 		AutoAOFRewritePercentage: 100,
 		AutoAOFRewriteMinSize:    64 << 20,
+		ReplBacklogSize:          1 << 20,
 		CompressionThreshold:     0,
 		SlowlogLogSlowerThan:     10000,
 		SlowlogMaxLen:            128,
@@ -224,6 +228,8 @@ func (c *Config) set(name string, vals []string) error {
 			v = ""
 		}
 		c.ReplicaOf = v
+	case "repl-backlog-size":
+		c.ReplBacklogSize, err = ParseBytes(v)
 	case "masterauth":
 		c.MasterAuth = v
 	case "masteruser":
@@ -281,6 +287,7 @@ func (c *Config) Params(pattern string) [][2]string {
 		"history-depth":               strconv.Itoa(c.HistoryDepth),
 		"replicaof":                   c.ReplicaOf,
 		"masterauth":                  c.MasterAuth,
+		"repl-backlog-size":           strconv.FormatInt(c.ReplBacklogSize, 10),
 		"masteruser":                  c.MasterUser,
 		"cluster-enabled":             formatBool(c.ClusterEnabled),
 		"cluster-node-id":             c.ClusterNodeID,

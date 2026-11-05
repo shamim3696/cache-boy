@@ -55,6 +55,12 @@ type Manager struct {
 	replicas  map[*replica]struct{}
 	nreplicas atomic.Int32
 	ports     map[int64]int // client ID -> REPLCONF listening-port
+	backlog   *backlog      // nil until the first replica attaches
+
+	backlogSize             int
+	syncFull, syncPartialOK atomic.Int64
+	syncPartialErr          atomic.Int64
+	backlogOn               atomic.Bool
 
 	// --- follower side ---
 	fmu       sync.Mutex // serialises ReplicaOf
@@ -72,6 +78,7 @@ type Options struct {
 	AckInterval      time.Duration // follower → leader REPLCONF ACK period (default 1s)
 	Timeout          time.Duration // a link silent this long is dead (default 60s)
 	MaxReplicaBuffer int64         // bytes queued per replica before it is dropped (default 256MB)
+	BacklogSize      int           // stream bytes kept for partial resync (default: config repl-backlog-size)
 }
 
 // Setup creates the manager with default options; see SetupWith.
@@ -93,12 +100,16 @@ func SetupWith(e *command.Engine, o Options) *Manager {
 	if o.MaxReplicaBuffer <= 0 {
 		o.MaxReplicaBuffer = 256 << 20
 	}
+	if o.BacklogSize <= 0 {
+		o.BacklogSize = int(e.Cfg.Get().ReplBacklogSize)
+	}
 	m := &Manager{
 		e:                e,
 		pingInterval:     o.PingInterval,
 		ackInterval:      o.AckInterval,
 		timeout:          o.Timeout,
 		maxReplicaBuffer: o.MaxReplicaBuffer,
+		backlogSize:      o.BacklogSize,
 		replicas:         map[*replica]struct{}{},
 		ports:            map[int64]int{},
 		stop:             make(chan struct{}),
@@ -240,6 +251,10 @@ func (m *Manager) Info() [][2]string {
 				",offset=" + i64(max(r.ack.Load(), 0)) + ",lag=" + i64(lag)})
 	}
 	masterOffset := m.offset
+	backlogLen := 0
+	if m.backlog != nil {
+		backlogLen = m.backlog.histLen()
+	}
 	m.mu.Unlock()
 	if l != nil {
 		masterOffset = l.offset.Load()
@@ -248,6 +263,12 @@ func (m *Manager) Info() [][2]string {
 		[2]string{"master_failover_state", "no-failover"},
 		[2]string{"master_replid", m.e.RunID},
 		[2]string{"master_repl_offset", i64(masterOffset)},
+		[2]string{"repl_backlog_active", boolStr(m.backlogOn.Load())},
+		[2]string{"repl_backlog_size", strconv.Itoa(m.backlogSize)},
+		[2]string{"repl_backlog_histlen", strconv.Itoa(backlogLen)},
+		[2]string{"sync_full", i64(m.syncFull.Load())},
+		[2]string{"sync_partial_ok", i64(m.syncPartialOK.Load())},
+		[2]string{"sync_partial_err", i64(m.syncPartialErr.Load())},
 	)
 	if n := m.failovers.Load(); n > 0 {
 		out = append(out, [2]string{"raft_failovers", i64(n)})
@@ -256,3 +277,10 @@ func (m *Manager) Info() [][2]string {
 }
 
 func logf(format string, args ...any) { logger(format, args...) }
+
+func boolStr(b bool) string {
+	if b {
+		return "1"
+	}
+	return "0"
+}

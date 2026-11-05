@@ -25,6 +25,10 @@ type link struct {
 	offset atomic.Int64           // applied replication offset
 	lastIO atomic.Int64           // unix ms of the last byte from the leader
 	syncs  atomic.Int64           // completed full syncs
+	// replid is the leader's replication ID from the last full sync. With it
+	// and offset, a reconnect asks for PSYNC instead of a full resync. Only
+	// the follow goroutine touches it.
+	replid string
 
 	stop     chan struct{}
 	done     chan struct{}
@@ -222,7 +226,11 @@ func (m *Manager) syncOnce(l *link) (synced bool, err error) {
 	if strings.HasPrefix(line, "-") {
 		return false, fmt.Errorf("leader refused REPLCONF: %s", line[1:])
 	}
-	if err := send("SYNC"); err != nil {
+	syncCmd := []string{"SYNC"}
+	if l.replid != "" && l.offset.Load() >= 0 {
+		syncCmd = []string{"PSYNC", l.replid, strconv.FormatInt(l.offset.Load(), 10)}
+	}
+	if err := send(syncCmd...); err != nil {
 		return false, err
 	}
 	l.setState("sync")
@@ -230,6 +238,13 @@ func (m *Manager) syncOnce(l *link) (synced bool, err error) {
 		return false, err
 	}
 	f := strings.Fields(line)
+	if len(f) == 2 && f[0] == "+CONTINUE" {
+		// Partial resync: keep our data; the missing bytes follow as commands.
+		l.lastIO.Store(time.Now().UnixMilli())
+		l.setState("connected")
+		logf("replication: partial resync with %s from offset %d", l.addr, l.offset.Load())
+		return true, m.stream(l, br, conn, send)
+	}
 	if len(f) != 3 || f[0] != "+FULLRESYNC" {
 		return false, fmt.Errorf("unexpected SYNC reply %q", line)
 	}
@@ -261,6 +276,7 @@ func (m *Manager) syncOnce(l *link) (synced bool, err error) {
 		logf("replication: %v", err)
 	}
 	m.dropAll() // our own replicas must resync from the new dataset
+	l.replid = f[1]
 	l.offset.Store(offset)
 	l.lastIO.Store(time.Now().UnixMilli())
 	l.syncs.Add(1)
@@ -270,10 +286,15 @@ func (m *Manager) syncOnce(l *link) (synced bool, err error) {
 	if m.e.Persist != nil {
 		m.e.Persist.BgRewriteAOF() // the AOF must reflect the new dataset; error = AOF off
 	}
+	return true, m.stream(l, br, conn, send)
+}
 
+// stream applies the leader's command stream and sends ACKs until the
+// connection fails.
+func (m *Manager) stream(l *link, br *bufio.Reader, conn net.Conn, send func(args ...string) error) error {
 	sendAck := func() error { return send("REPLCONF", "ACK", strconv.FormatInt(l.offset.Load(), 10)) }
 	if err := sendAck(); err != nil {
-		return true, err
+		return err
 	}
 	ackDone := make(chan struct{})
 	defer close(ackDone)
@@ -300,7 +321,7 @@ func (m *Manager) syncOnce(l *link) (synced bool, err error) {
 	for {
 		args, err := rr.ReadCommand()
 		if err != nil {
-			return true, err
+			return err
 		}
 		n := respLen(args)
 		l.lastIO.Store(time.Now().UnixMilli())
@@ -310,7 +331,7 @@ func (m *Manager) syncOnce(l *link) (synced bool, err error) {
 		case strings.EqualFold(args[0], "replconf") && len(args) > 1 && strings.EqualFold(args[1], "getack"):
 			l.offset.Add(n)
 			if err := sendAck(); err != nil {
-				return true, err
+				return err
 			}
 		default:
 			v := m.e.Execute(client, args)

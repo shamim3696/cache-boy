@@ -47,7 +47,7 @@ const replicaQueue = 1 << 16
 // once and queued for every replica. It never blocks: a replica whose queue
 // is full is dropped (it will reconnect and resync).
 func (m *Manager) Propagate(args []string) {
-	if m.nreplicas.Load() == 0 {
+	if m.nreplicas.Load() == 0 && !m.backlogOn.Load() {
 		return
 	}
 	m.feed(resp.AppendCommand(nil, args))
@@ -57,10 +57,13 @@ func (m *Manager) Propagate(args []string) {
 func (m *Manager) feed(b []byte) {
 	m.mu.Lock()
 	defer m.mu.Unlock()
-	if len(m.replicas) == 0 {
+	if len(m.replicas) == 0 && m.backlog == nil {
 		return
 	}
 	m.offset += int64(len(b))
+	if m.backlog != nil {
+		m.backlog.append(b)
+	}
 	for r := range m.replicas {
 		if r.pending.Load()+int64(len(b)) > m.maxReplicaBuffer {
 			logger("replication: replica %s:%d can't keep up (%d bytes queued), dropping it", r.ip, r.port, r.pending.Load())
@@ -139,28 +142,74 @@ func (m *Manager) Sync(c *command.Client, args []string) resp.Value {
 	if c.Kind != "tcp" {
 		return resp.Err("ERR SYNC needs a TCP connection")
 	}
+	// PSYNC <replid> <offset>: continue from the backlog if we still have
+	// every byte the replica is missing.
+	if len(args) == 3 && strings.EqualFold(args[0], "psync") && args[1] == m.e.RunID {
+		if from, err := strconv.ParseInt(args[2], 10, 64); err == nil {
+			r := m.newReplica(c)
+			m.mu.Lock()
+			var tail []byte
+			ok := m.backlog != nil
+			if ok {
+				tail, ok = m.backlog.since(from, m.offset)
+			}
+			if ok {
+				m.attachLocked(r, c.ID)
+			}
+			m.mu.Unlock()
+			if ok {
+				m.syncPartialOK.Add(1)
+				head := append([]byte("+CONTINUE "+m.e.RunID+"\r\n"), tail...)
+				c.Hijack = func(conn net.Conn, rd *resp.Reader) {
+					m.serveReplica(r, conn, rd, head, fmt.Sprintf("partial resync from offset %d (%d bytes)", from, len(tail)))
+				}
+				return resp.None()
+			}
+			m.syncPartialErr.Add(1)
+		}
+	}
+
+	m.syncFull.Add(1)
 	snap, err := snapshot.AppendDB(nil, m.e.DB, m.e.DumpModules)
 	if err != nil {
 		return resp.Errf("ERR snapshot failed: %v", err)
 	}
-	r := &replica{id: c.ID, ch: make(chan []byte, replicaQueue), done: make(chan struct{})}
-	r.ack.Store(-1)
-	r.setState("wait_bgsave")
+	r := m.newReplica(c)
 	m.mu.Lock()
-	r.port = m.ports[c.ID]
-	delete(m.ports, c.ID)
+	if m.backlog == nil {
+		m.backlog = newBacklog(m.backlogSize)
+		m.backlogOn.Store(true)
+	}
 	offset := m.offset
-	m.replicas[r] = struct{}{}
-	m.nreplicas.Add(1)
+	m.attachLocked(r, c.ID)
 	m.mu.Unlock()
 
-	c.Hijack = func(conn net.Conn, rd *resp.Reader) { m.serveReplica(r, conn, rd, snap, offset) }
+	head := append([]byte(fmt.Sprintf("+FULLRESYNC %s %d\r\n$%d\r\n", m.e.RunID, offset, len(snap))), snap...)
+	c.Hijack = func(conn net.Conn, rd *resp.Reader) {
+		m.serveReplica(r, conn, rd, head, fmt.Sprintf("full resync: %d byte snapshot at offset %d", len(snap), offset))
+	}
 	return resp.None()
 }
 
-// serveReplica owns a hijacked replica connection: it sends the snapshot,
-// then streams queued commands; a second goroutine reads REPLCONF ACKs.
-func (m *Manager) serveReplica(r *replica, conn net.Conn, rd *resp.Reader, snap []byte, offset int64) {
+func (m *Manager) newReplica(c *command.Client) *replica {
+	r := &replica{id: c.ID, ch: make(chan []byte, replicaQueue), done: make(chan struct{})}
+	r.ack.Store(-1)
+	r.setState("wait_bgsave")
+	return r
+}
+
+// attachLocked starts queueing the stream for r. Requires mu.
+func (m *Manager) attachLocked(r *replica, clientID int64) {
+	r.port = m.ports[clientID]
+	delete(m.ports, clientID)
+	m.replicas[r] = struct{}{}
+	m.nreplicas.Add(1)
+}
+
+// serveReplica owns a hijacked replica connection: it sends head (the
+// FULLRESYNC header + snapshot, or CONTINUE + backlog tail), then streams
+// queued commands; a second goroutine reads REPLCONF ACKs.
+func (m *Manager) serveReplica(r *replica, conn net.Conn, rd *resp.Reader, head []byte, what string) {
 	defer conn.Close()
 	defer m.remove(r)
 	if host, p, err := net.SplitHostPort(conn.RemoteAddr().String()); err == nil {
@@ -171,18 +220,17 @@ func (m *Manager) serveReplica(r *replica, conn net.Conn, rd *resp.Reader, snap 
 		}
 		m.mu.Unlock()
 	}
-	logger("replication: replica %s:%d connected, sending %d byte snapshot at offset %d", r.ip, r.port, len(snap), offset)
+	logger("replication: replica %s:%d connected, %s", r.ip, r.port, what)
 
 	r.setState("send_bulk")
 	w := bufio.NewWriterSize(conn, 64<<10)
 	conn.SetWriteDeadline(time.Now().Add(m.timeout))
-	fmt.Fprintf(w, "+FULLRESYNC %s %d\r\n$%d\r\n", m.e.RunID, offset, len(snap))
-	w.Write(snap)
+	w.Write(head)
 	if err := w.Flush(); err != nil {
-		logger("replication: sending snapshot to %s:%d: %v", r.ip, r.port, err)
+		logger("replication: sending sync data to %s:%d: %v", r.ip, r.port, err)
 		return
 	}
-	snap = nil
+	head = nil
 	r.setState("online")
 
 	go func() { // ACK reader
