@@ -23,10 +23,6 @@ import (
 // MaxBody is the largest request body / WebSocket message accepted (16 MB).
 const MaxBody = 16 << 20
 
-// typeMulti is resp's internal "several replies" type (SUBSCRIBE a b). It is
-// unexported in package resp; it is rendered as an array.
-const typeMulti resp.Type = 1
-
 // AppendJSON appends v encoded as JSON:
 //
 //	simple/bulk → string, integer → number, double → number ("inf", "-inf",
@@ -60,7 +56,7 @@ func AppendJSON(b []byte, v resp.Value) []byte {
 		}
 		return append(b, '}')
 	}
-	if v.Elems != nil || v.Type == resp.TypeArray || v.Type == resp.TypeSet || v.Type == resp.TypePush || v.Type == typeMulti {
+	if v.Elems != nil || v.Type == resp.TypeArray || v.Type == resp.TypeSet || v.Type == resp.TypePush || v.IsMulti() {
 		b = append(b, '[')
 		for i, e := range v.Elems {
 			if i > 0 {

@@ -3,7 +3,7 @@ module cache-boy
 go 1.26.4
 
 require (
-	github.com/coder/websocket v1.8.15 // indirect
+	github.com/coder/websocket v1.8.15
 	github.com/dlclark/regexp2/v2 v2.11.0 // indirect
 	github.com/dop251/goja v0.0.0-20261105002551-2413f2132ac8 // indirect
 	github.com/go-sourcemap/sourcemap v2.1.3+incompatible // indirect

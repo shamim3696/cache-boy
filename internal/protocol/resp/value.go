@@ -56,6 +56,7 @@ func Push(vs ...Value) Value      { return Value{Type: TypePush, Elems: nonNil(v
 func Multi(vs ...Value) Value     { return Value{Type: typeMulti, Elems: vs} }
 func None() Value                 { return Value{Type: typeNone} }
 func (v Value) IsNone() bool      { return v.Type == typeNone }
+func (v Value) IsMulti() bool     { return v.Type == typeMulti }
 func (v Value) IsError() bool     { return v.Type == TypeError }
 func (v Value) IsNull() bool      { return v.Type == TypeNull }
 
