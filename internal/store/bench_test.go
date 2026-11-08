@@ -5,51 +5,65 @@ import (
 	"testing"
 )
 
-var benchFields = func() []string {
-	out := make([]string, 8)
-	for i := range out {
-		out[i] = "field" + strconv.Itoa(i)
-	}
-	return out
-}()
+const benchKeys = 1 << 16
 
-func BenchmarkHashSmallSet(b *testing.B) {
-	h := NewHash()
+func benchDB(b *testing.B) (*DB, []string) {
+	db := New(16)
+	keys := make([]string, benchKeys)
+	for i := range keys {
+		keys[i] = "key:" + strconv.Itoa(i)
+		put(db, keys[i], "value", 0)
+	}
+	b.ResetTimer()
+	return db, keys
+}
+
+// BenchmarkGet is a hit, the way a command runs it: lock the shard, Get, unlock.
+func BenchmarkGet(b *testing.B) {
+	db, keys := benchDB(b)
 	for i := 0; b.Loop(); i++ {
-		h.Set(benchFields[i%5], "value")
+		k := keys[i&(benchKeys-1)]
+		unlock := db.Lock(k)
+		db.Get(k)
+		unlock()
 	}
 }
 
-func BenchmarkHashSmallGet(b *testing.B) {
-	h := NewHash()
-	for i := range 5 {
-		h.Set(benchFields[i], "value-"+strconv.Itoa(i))
-	}
+// BenchmarkPut replaces existing keys.
+func BenchmarkPut(b *testing.B) {
+	db, keys := benchDB(b)
+	e := db.NewStringValue([]byte("value"))
 	for i := 0; b.Loop(); i++ {
-		h.Get(benchFields[i%8])
+		k := keys[i&(benchKeys-1)]
+		unlock := db.Lock(k)
+		db.Put(k, e)
+		unlock()
 	}
 }
 
-func BenchmarkSetIntAddHas(b *testing.B) {
-	members := make([]string, 20)
-	for i := range members {
-		members[i] = strconv.Itoa(i * 37)
-	}
-	s := NewSet()
+// BenchmarkPutTTL inserts fresh keys with a TTL, exercising the timing wheel.
+func BenchmarkPutTTL(b *testing.B) {
+	db, keys := benchDB(b)
+	at := nowMs() + 60_000
 	for i := 0; b.Loop(); i++ {
-		s.Add(members[i%10])
-		s.Has(members[i%20])
+		k := keys[i&(benchKeys-1)]
+		unlock := db.Lock(k)
+		e := db.NewStringValue([]byte("value"))
+		e.ExpireAt = at + int64(i&1023)
+		db.Put(k, e)
+		unlock()
 	}
 }
 
-func BenchmarkSetStrAddHas(b *testing.B) {
-	members := make([]string, 20)
-	for i := range members {
-		members[i] = "tag:" + strconv.Itoa(i)
+func BenchmarkSketchIncrement(b *testing.B) {
+	s := newSketch(4096)
+	for i := uint32(0); b.Loop(); i++ {
+		s.increment(sketchHash(i & 8191))
 	}
-	s := NewSet()
-	for i := 0; b.Loop(); i++ {
-		s.Add(members[i%10])
-		s.Has(members[i%20])
+}
+
+func BenchmarkHashKey(b *testing.B) {
+	for b.Loop() {
+		hashKey("key:12345")
 	}
 }

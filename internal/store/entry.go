@@ -69,12 +69,14 @@ func (k Kind) String() string {
 //	KindBloom      *bloom.Filter
 //	KindHLL        *hll.HLL
 type Entry struct {
-	Kind     Kind
+	Kind Kind
+	freq uint8  // logarithmic access counter (LFU)
+	hash uint32 // hashKey of the key, set by Put
+
 	Value    sizer
 	ExpireAt int64 // unix ms; 0 = no expiry
 
 	access int64 // last access, unix ms (LRU)
-	freq   uint8 // logarithmic access counter (LFU)
 	size   int64 // memory accounted for this entry
 }
 
@@ -107,8 +109,11 @@ const (
 	lfuDecayMs   = 60_000 // counter halves... decays by 1 per idle minute
 )
 
-// touch updates LRU/LFU info on access (Redis' probabilistic log counter).
-func (e *Entry) touch(now int64) {
+// touch updates LRU/LFU info on access (Redis' probabilistic log counter) and
+// records the access in the shard's frequency sketch. x is the key's
+// sketchHash; the caller holds the shard lock.
+func (e *Entry) touch(now int64, f *sketch, x uint64) {
+	f.increment(x)
 	if e.access > 0 {
 		if periods := (now - e.access) / lfuDecayMs; periods > 0 {
 			if int64(e.freq) > periods {

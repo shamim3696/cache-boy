@@ -8,11 +8,21 @@ import (
 type shard struct {
 	mu       sync.Mutex
 	data     map[string]*Entry
-	volatile map[string]struct{} // keys with an expiry, for active expiry
+	volatile map[string]struct{} // keys with an expiry, sampled by volatile-* eviction
+	wheel    wheel               // the same keys bucketed by expiry, for active expiry
+	freq     *sketch             // recent access frequency, for allkeys/volatile-tinylfu
+	unlock   func()              // mu.Unlock, made once: a method value per Lock allocates
 }
 
 func newShard() *shard {
-	return &shard{data: map[string]*Entry{}, volatile: map[string]struct{}{}}
+	s := &shard{
+		data:     map[string]*Entry{},
+		volatile: map[string]struct{}{},
+		wheel:    newWheel(nowMs()),
+		freq:     newSketch(0),
+	}
+	s.unlock = s.mu.Unlock
+	return s
 }
 
 // NumShards returns the shard count.
@@ -25,9 +35,9 @@ func (db *DB) Lock(keys ...string) func() {
 	case 0:
 		return func() {}
 	case 1:
-		s := db.shardOf(keys[0])
+		s := db.shards[db.shardIndex(keys[0])]
 		s.mu.Lock()
-		return s.mu.Unlock
+		return s.unlock
 	}
 	idx := make([]int, 0, len(keys))
 	seen := map[uint32]bool{}
@@ -61,44 +71,33 @@ func (db *DB) LockAll() func() {
 	}
 }
 
-// ActiveExpireCycle checks up to sample keys with a TTL in every shard and
-// deletes the expired ones, like Redis' activeExpireCycle. If more than 25% of
-// a shard's sample was expired it samples that shard again. Self-locking.
-func (db *DB) ActiveExpireCycle(sample int) int {
-	total := 0
+// ActiveExpireCycle deletes expired keys found in the due buckets of each
+// shard's timing wheel. It checks at most budget wheel entries per shard and
+// holds one shard lock at a time, so a mass expiry can't stall the server;
+// the rest waits for the next cycle. It returns the number of keys deleted
+// and whether due entries are left over. Self-locking.
+func (db *DB) ActiveExpireCycle(budget int) (expired int, more bool) {
 	for _, s := range db.shards {
-		for {
-			s.mu.Lock()
-			checked, expired := 0, 0
-			now := nowMs()
-			for k := range s.volatile { // map order is random in Go: free sampling
-				if checked >= sample {
-					break
-				}
-				checked++
-				if e := s.data[k]; e != nil && e.ExpireAt <= now {
-					db.Delete(k)
-					db.Expired.Add(1)
-					db.Emit(Event{Key: k, Op: "expired"})
-					expired++
-				}
-			}
-			s.mu.Unlock()
-			total += expired
-			if checked == 0 || expired*4 <= checked {
-				break
-			}
-		}
+		s.mu.Lock()
+		n, m := db.expireDue(s, budget, nowMs())
+		s.mu.Unlock()
+		expired += n
+		more = more || m
 	}
-	return total
+	return expired, more
 }
 
 // Candidate is a key sampled for eviction.
 type Candidate struct {
 	Key      string
-	Access   int64
-	Freq     uint8
+	Access   int64 // last access, unix ms
+	Freq     uint8 // Redis-style logarithmic LFU counter
+	Sketch   uint8 // TinyLFU estimate of recent accesses, 0..16
 	ExpireAt int64
+}
+
+func (s *shard) candidate(k string, e *Entry) Candidate {
+	return Candidate{k, e.access, e.freq, s.freq.estimate(sketchHash(e.hash)), e.ExpireAt}
 }
 
 // Sample returns up to n random keys from one shard. With volatileOnly only
@@ -113,8 +112,7 @@ func (db *DB) Sample(shardIdx, n int, volatileOnly bool) []Candidate {
 			if len(out) >= n {
 				break
 			}
-			e := s.data[k]
-			out = append(out, Candidate{k, e.access, e.freq, e.ExpireAt})
+			out = append(out, s.candidate(k, s.data[k]))
 		}
 		return out
 	}
@@ -122,14 +120,27 @@ func (db *DB) Sample(shardIdx, n int, volatileOnly bool) []Candidate {
 		if len(out) >= n {
 			break
 		}
-		out = append(out, Candidate{k, e.access, e.freq, e.ExpireAt})
+		out = append(out, s.candidate(k, e))
 	}
 	return out
 }
 
+// Recheck returns the current eviction data of key, for candidates that
+// waited in an eviction pool. Self-locking.
+func (db *DB) Recheck(key string) (Candidate, bool) {
+	s := db.shards[db.shardIndex(key)]
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	e, ok := s.data[key]
+	if !ok {
+		return Candidate{}, false
+	}
+	return s.candidate(key, e), true
+}
+
 // Evict deletes key and emits an "evicted" event. Self-locking.
 func (db *DB) Evict(key string) bool {
-	s := db.shardOf(key)
+	s := db.shards[db.shardIndex(key)]
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	if !db.Delete(key) {

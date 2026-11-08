@@ -30,7 +30,7 @@ func TestLazyAndActiveExpiry(t *testing.T) {
 		t.Fatal("expired key returned")
 	}
 	unlock()
-	if n := db.ActiveExpireCycle(20); n != 1 {
+	if n, _ := db.ActiveExpireCycle(20); n != 1 {
 		t.Fatalf("active expiry removed %d keys", n)
 	}
 	if db.Len() != 1 || db.Expired.Load() != 2 {
