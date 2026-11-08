@@ -81,13 +81,15 @@ func (db *DB) NewStringValue(b []byte) *Entry {
 // Get looks up key for a command: expired keys are removed, LRU/LFU info and
 // hit/miss stats are updated. Returns nil if missing.
 func (db *DB) Get(key string) *Entry {
-	e := db.lookup(key)
+	h := hashKey(key)
+	s := db.shards[h&db.mask]
+	e := db.lookupIn(s, key)
 	if e == nil {
 		db.Misses.Add(1)
 		return nil
 	}
 	db.Hits.Add(1)
-	e.touch(nowMs())
+	e.touch(nowMs(), s.freq, sketchHash(h))
 	return e
 }
 
@@ -104,36 +106,47 @@ func (db *DB) GetKind(key string, kind Kind) (*Entry, error) {
 }
 
 // Put inserts or replaces key. The entry's ExpireAt is kept as given.
+// A write counts as an access for the frequency sketch.
 func (db *DB) Put(key string, e *Entry) {
-	s := db.shardOf(key)
+	h := hashKey(key)
+	s := db.shards[h&db.mask]
+	var oldAt int64
 	if old, ok := s.data[key]; ok {
 		db.used.Add(-old.size)
+		if old != e {
+			oldAt = old.ExpireAt
+		}
 	} else {
 		db.count.Add(1)
+		if len(s.data) >= s.freq.capacity {
+			s.freq = newSketch(len(s.data) + 1) // rare: each time the shard doubles
+		}
 	}
 	e.size = entrySize(key, e)
+	e.hash = h
 	db.used.Add(e.size)
 	if e.access == 0 {
-		e.touch(nowMs())
+		e.touch(nowMs(), s.freq, sketchHash(h))
+	} else {
+		s.freq.increment(sketchHash(h))
 	}
 	s.data[key] = e
-	if e.ExpireAt > 0 {
-		s.volatile[key] = struct{}{}
-	} else {
-		delete(s.volatile, key)
-	}
+	s.track(key, oldAt, e.ExpireAt)
 	db.dirty.Add(1)
 }
 
 // Delete removes key. It does not emit an event.
 func (db *DB) Delete(key string) bool {
-	s := db.shardOf(key)
+	return db.deleteIn(db.shards[db.shardIndex(key)], key)
+}
+
+func (db *DB) deleteIn(s *shard, key string) bool {
 	e, ok := s.data[key]
 	if !ok {
 		return false
 	}
 	delete(s.data, key)
-	delete(s.volatile, key)
+	delete(s.volatile, key) // its wheel entry turns stale and is skipped later
 	db.used.Add(-e.size)
 	db.count.Add(-1)
 	db.dirty.Add(1)
@@ -143,7 +156,7 @@ func (db *DB) Delete(key string) bool {
 // Updated must be called after a value is modified in place (LPUSH, HSET...).
 // It refreshes memory accounting and deletes containers that became empty.
 func (db *DB) Updated(key string) {
-	s := db.shardOf(key)
+	s := db.shards[db.shardIndex(key)]
 	e, ok := s.data[key]
 	if !ok {
 		return
@@ -160,17 +173,14 @@ func (db *DB) Updated(key string) {
 
 // SetExpire sets an absolute expiry in unix ms (0 removes it). Returns false if key is missing.
 func (db *DB) SetExpire(key string, atMs int64) bool {
-	s := db.shardOf(key)
+	s := db.shards[db.shardIndex(key)]
 	e, ok := s.data[key]
 	if !ok {
 		return false
 	}
-	e.ExpireAt = atMs
-	if atMs > 0 {
-		s.volatile[key] = struct{}{}
-	} else {
-		delete(s.volatile, key)
-	}
+	oldAt := e.ExpireAt
+	e.ExpireAt = atMs // before track, which may rebuild the wheel from entries
+	s.track(key, oldAt, atMs)
 	db.dirty.Add(1)
 	return true
 }
@@ -230,9 +240,12 @@ func (db *DB) Scan(cursor uint64, count int, match func(key string, e *Entry) bo
 
 // Flush deletes every key. Requires LockAll. Emits a "flushall" event.
 func (db *DB) Flush() {
+	now := nowMs()
 	for _, s := range db.shards {
 		s.data = map[string]*Entry{}
 		s.volatile = map[string]struct{}{}
+		s.wheel = newWheel(now)
+		s.freq = newSketch(0)
 	}
 	db.count.Store(0)
 	db.used.Store(0)
@@ -242,26 +255,19 @@ func (db *DB) Flush() {
 
 // --- internals ---
 
-func (db *DB) shardIndex(key string) uint32 {
-	// FNV-1a
-	h := uint32(2166136261)
-	for i := 0; i < len(key); i++ {
-		h ^= uint32(key[i])
-		h *= 16777619
-	}
-	return h & db.mask
-}
-
-func (db *DB) shardOf(key string) *shard { return db.shards[db.shardIndex(key)] }
+func (db *DB) shardIndex(key string) uint32 { return hashKey(key) & db.mask }
 
 func (db *DB) lookup(key string) *Entry {
-	s := db.shardOf(key)
+	return db.lookupIn(db.shards[db.shardIndex(key)], key)
+}
+
+func (db *DB) lookupIn(s *shard, key string) *Entry {
 	e, ok := s.data[key]
 	if !ok {
 		return nil
 	}
 	if e.ExpireAt > 0 && e.ExpireAt <= nowMs() {
-		db.Delete(key)
+		db.deleteIn(s, key)
 		db.Expired.Add(1)
 		db.Emit(Event{Key: key, Op: "expired"})
 		return nil

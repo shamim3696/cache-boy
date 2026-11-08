@@ -10,20 +10,31 @@ import (
 	"cache-boy/internal/store"
 )
 
-const samplePerShard = 20
+// budgetPerShard caps the wheel entries checked per shard per sweep, so a
+// mass expiry is spread over several sweeps instead of pausing the server.
+// At the default 10 Hz and 64 shards that is 1.28M keys per second, and up
+// to 10× that while Run is catching up.
+const budgetPerShard = 2000
 
-// Run sweeps HZ times per second until stop is closed.
+// Run sweeps HZ times per second until stop is closed. While a sweep leaves
+// due keys behind it sweeps again 10× sooner, which still leaves the shards
+// unlocked most of the time but frees a mass expiry within a few ticks.
 func Run(db *store.DB, cfg *config.Store, stop <-chan struct{}) {
+	more := false
 	for {
 		hz := cfg.Get().HZ
 		if hz <= 0 {
 			hz = 10
 		}
+		wait := time.Second / time.Duration(hz)
+		if more {
+			wait /= 10
+		}
 		select {
 		case <-stop:
 			return
-		case <-time.After(time.Second / time.Duration(hz)):
-			db.ActiveExpireCycle(samplePerShard)
+		case <-time.After(wait):
+			_, more = db.ActiveExpireCycle(budgetPerShard)
 		}
 	}
 }

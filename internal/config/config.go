@@ -33,7 +33,7 @@ type Config struct {
 	Timeout     int // idle client timeout in seconds; 0 = never
 
 	MaxMemory        int64  // bytes; 0 = unlimited
-	MaxMemoryPolicy  string // noeviction, allkeys-lru, allkeys-lfu, allkeys-random, volatile-lru, volatile-lfu, volatile-random, volatile-ttl
+	MaxMemoryPolicy  string // noeviction, {allkeys,volatile}-{lru,lfu,tinylfu,random}, volatile-ttl
 	MaxMemorySamples int
 	HZ               int // background task frequency (active expiry etc.)
 
@@ -190,8 +190,8 @@ func (c *Config) set(name string, vals []string) error {
 		c.MaxMemory, err = ParseBytes(v)
 	case "maxmemory-policy":
 		switch v {
-		case "noeviction", "allkeys-lru", "allkeys-lfu", "allkeys-random",
-			"volatile-lru", "volatile-lfu", "volatile-random", "volatile-ttl":
+		case "noeviction", "allkeys-lru", "allkeys-lfu", "allkeys-random", "allkeys-tinylfu",
+			"volatile-lru", "volatile-lfu", "volatile-random", "volatile-ttl", "volatile-tinylfu":
 			c.MaxMemoryPolicy = v
 		default:
 			err = fmt.Errorf("invalid maxmemory-policy %q", v)

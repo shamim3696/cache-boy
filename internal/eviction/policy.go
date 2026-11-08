@@ -1,11 +1,14 @@
 // Package eviction frees memory when maxmemory is reached. Like Redis it uses
 // approximated algorithms: sample a few random keys and evict the best
-// candidate, instead of keeping an exact LRU list of every key.
+// candidate, instead of keeping an exact LRU list of every key. The best
+// candidates seen so far are kept in a small pool across rounds and calls,
+// which makes the approximation much closer to the exact algorithm.
 package eviction
 
 import (
 	"errors"
 	"strings"
+	"sync"
 	"sync/atomic"
 
 	"cache-boy/internal/config"
@@ -23,6 +26,9 @@ type Evictor struct {
 	db   *store.DB
 	cfg  *config.Store
 	next atomic.Uint32 // shard to sample next
+
+	mu   sync.Mutex // serialises evictions, so concurrent writers don't overshoot
+	pool pool
 }
 
 func New(db *store.DB, cfg *config.Store) *Evictor {
@@ -40,8 +46,14 @@ func (ev *Evictor) Free() error {
 	if c.MaxMemoryPolicy == "noeviction" {
 		return ErrOOM
 	}
+	ev.mu.Lock()
+	defer ev.mu.Unlock()
 	volatileOnly := strings.HasPrefix(c.MaxMemoryPolicy, "volatile-")
 	pick := policy(c.MaxMemoryPolicy)
+	usePool := !strings.HasSuffix(c.MaxMemoryPolicy, "-random")
+	if ev.pool.policy != c.MaxMemoryPolicy {
+		ev.pool = pool{policy: c.MaxMemoryPolicy}
+	}
 	samples := c.MaxMemorySamples
 	if samples <= 0 {
 		samples = 5
@@ -52,16 +64,20 @@ func (ev *Evictor) Free() error {
 			return ErrOOM
 		}
 		// Sample a few shards per round so we compare keys across the keyspace.
-		var best *store.Candidate
 		now := nowMs()
+		var best *store.Candidate
 		for i := 0; i < 4; i++ {
 			shard := int(ev.next.Add(1)) % n
 			for _, cand := range ev.db.Sample(shard, samples, volatileOnly) {
-				if best == nil || pick(cand, *best, now) {
-					cand := cand
+				if usePool {
+					ev.pool.offer(cand, pick, now)
+				} else if best == nil {
 					best = &cand
 				}
 			}
+		}
+		if usePool {
+			best = ev.pool.take(ev.db, pick, now, volatileOnly)
 		}
 		if best == nil {
 			if ev.db.Len() == 0 || round > n {
@@ -76,6 +92,8 @@ func (ev *Evictor) Free() error {
 
 func policy(name string) better {
 	switch {
+	case strings.HasSuffix(name, "-tinylfu"):
+		return tinyLFUBetter
 	case strings.HasSuffix(name, "-lru"):
 		return lruBetter
 	case strings.HasSuffix(name, "-lfu"):
