@@ -366,19 +366,22 @@ func incrCmd(x *Ctx) resp.Value {
 	}
 	var cur int64
 	if e != nil {
-		if cur, ok = ParseInt(string(e.Str().Bytes())); !ok {
-			return ErrNotInt
+		if cur, ok = e.Str().Int(); !ok {
+			// Not int-encoded, but strconv may still accept it ("+5", "007").
+			if cur, ok = ParseInt(string(e.Str().Bytes())); !ok {
+				return ErrNotInt
+			}
 		}
 	}
 	if delta > 0 && cur > math.MaxInt64-delta || delta < 0 && cur < math.MinInt64-delta {
 		return ErrOverflow
 	}
 	cur += delta
-	b := []byte(strconv.FormatInt(cur, 10))
 	if e == nil {
-		putString(x, key, b, 0)
+		x.DB().Put(key, store.NewEntry(store.KindString, store.NewInt(cur)))
 	} else {
-		replaceString(x, key, e, b)
+		e.Str().SetInt(cur)
+		x.DB().Updated(key)
 	}
 	return resp.Int(cur)
 }

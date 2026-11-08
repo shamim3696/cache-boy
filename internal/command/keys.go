@@ -440,31 +440,17 @@ func objectCmd(x *Ctx) resp.Value {
 func encodingOf(e *store.Entry) string {
 	switch e.Kind {
 	case store.KindString:
-		s := e.Str()
-		switch {
-		case s.Compressed():
-			return "compressed"
-		case s.Len() <= 20 && isInt(s.Bytes()):
-			return "int"
-		case s.Len() <= 44:
-			return "embstr"
-		}
-		return "raw"
+		return e.Str().Encoding()
+	case store.KindHash:
+		return e.Hash().Encoding()
+	case store.KindSet:
+		return e.Set().Encoding()
 	case store.KindList:
 		return "quicklist"
-	case store.KindHash, store.KindSet:
-		return "hashtable"
 	case store.KindZSet:
 		return "skiplist"
 	}
 	return e.Kind.String()
-}
-
-// isInt reports whether b is the canonical form of an int64 (what INCR accepts
-// and what Redis would store as an integer).
-func isInt(b []byte) bool {
-	n, ok := ParseInt(string(b))
-	return ok && strconv.FormatInt(n, 10) == string(b)
 }
 
 // --- helpers shared by the data type files ---

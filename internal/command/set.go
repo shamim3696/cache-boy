@@ -241,9 +241,7 @@ func setOp(x *Ctx, op string, keys []string) (map[string]struct{}, bool) {
 	case "union":
 		for _, s := range sets {
 			if s != nil {
-				for _, m := range s.Members() {
-					out[m] = struct{}{}
-				}
+				s.Range(func(m string) bool { out[m] = struct{}{}; return true })
 			}
 		}
 	case "inter":
@@ -252,28 +250,28 @@ func setOp(x *Ctx, op string, keys []string) (map[string]struct{}, bool) {
 		if sets[0] == nil {
 			return out, true
 		}
-	members:
-		for _, m := range sets[0].Members() {
+		sets[0].Range(func(m string) bool {
 			for _, s := range sets[1:] {
 				if !s.Has(m) {
-					continue members
+					return true
 				}
 			}
 			out[m] = struct{}{}
-		}
+			return true
+		})
 	case "diff":
 		if sets[0] == nil {
 			return out, true
 		}
-	diff:
-		for _, m := range sets[0].Members() {
+		sets[0].Range(func(m string) bool {
 			for _, s := range sets[1:] {
 				if s != nil && s.Has(m) {
-					continue diff
+					return true
 				}
 			}
 			out[m] = struct{}{}
-		}
+			return true
+		})
 	}
 	return out, true
 }
