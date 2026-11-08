@@ -4,6 +4,8 @@
  * method: `send(args)`.
  */
 import { CacheBoyError, ErrorCodes } from './errors.js';
+import { Bloom } from './features/bloom.js';
+import { pfAdd, pfCount, pfMerge } from './features/hll.js';
 import { type LockInfo, type LockOptions, Lock, acquireLock, lockInfo, withLock } from './features/lock.js';
 import { JsonDocs } from './features/json.js';
 import { Queue } from './features/queue.js';
@@ -561,6 +563,26 @@ export abstract class CommandsBase implements Executor {
   /** Vector similarity search. */
   get vector(): Vectors {
     return new Vectors(this);
+  }
+
+  /** Scalable Bloom filters (BF.*). */
+  get bloom(): Bloom {
+    return new Bloom(this);
+  }
+
+  /** HyperLogLog: true if the estimate may have changed. */
+  pfAdd(key: string, ...elements: Arg[]): Promise<boolean> {
+    return pfAdd(this, key, elements);
+  }
+
+  /** Estimated distinct elements; with several keys, of their union. */
+  pfCount(...keys: string[]): Promise<number> {
+    return pfCount(this, keys);
+  }
+
+  /** dest becomes the union of itself and the sources. */
+  pfMerge(dest: string, ...sources: string[]): Promise<void> {
+    return pfMerge(this, dest, sources);
   }
 
   /** Cache-aside with stampede protection (CACHE.GET). See WrapOptions. */

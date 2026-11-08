@@ -33,6 +33,8 @@
 //	timeseries retention varint | nlabels | nlabels × (name, value) |
 //	           nsamples | nsamples × (ts varint, value float64)
 //	vector     count | count × (id, dim uvarint, dim × float32, attributes string)
+//	bloom      bloom.Filter.Marshal() as a string
+//	hll        hll.HLL.Marshal() as a string
 //
 // MODULE records carry state that feature modules keep outside the keyspace
 // (queues, tags, rate limits...). Engine.DumpModules emits them as commands
@@ -206,6 +208,10 @@ func encodeKey(w *encoder, key string, e *store.Entry) error {
 			}
 			w.string(attr)
 		}
+	case store.KindBloom:
+		w.bytes(e.Bloom().Marshal())
+	case store.KindHLL:
+		w.bytes(e.HLL().Marshal())
 	default:
 		return fmt.Errorf("snapshot: key %q has unknown kind %d", key, e.Kind)
 	}
@@ -451,6 +457,12 @@ func decodeValue(d *decoder, kind store.Kind, threshold int) (sizer, error) {
 			s.Add(ts, v)
 		}
 		return s, nil
+
+	case store.KindBloom:
+		return d.bloom()
+
+	case store.KindHLL:
+		return d.hll()
 
 	case store.KindVector:
 		n, err := d.count()

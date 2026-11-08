@@ -42,6 +42,7 @@ export {
 export { JsonDocs } from './features/json.js';
 export { TimeSeries, type Sample, type Aggregation } from './features/timeseries.js';
 export { Vectors, type VectorMatch } from './features/vector.js';
-export { type WrapOptions, type WrapStatus } from './features/wrap.js';
+export { Bloom, type BloomInfo, type BloomReserveOptions } from './features/bloom.js';
+export { type WrapOptions, type WrapStatus, NEGATIVE_SENTINEL } from './features/wrap.js';
 export { globMatch } from './glob.js';
 export type { Executor, StorableValue, Duration } from './types.js';

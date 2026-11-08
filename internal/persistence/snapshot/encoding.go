@@ -7,6 +7,9 @@ import (
 	"hash"
 	"io"
 	"math"
+
+	"cache-boy/internal/datatype/bloom"
+	"cache-boy/internal/datatype/hll"
 )
 
 // Low-level primitives of the snapshot format. Every integer is a varint
@@ -162,4 +165,31 @@ func (d *decoder) float32() (float32, error) {
 		return 0, err
 	}
 	return math.Float32frombits(binary.LittleEndian.Uint32(b[:])), nil
+}
+
+// Bloom filters and HyperLogLogs are stored as one string holding the
+// type's own encoding, which validates itself on decode.
+
+func (d *decoder) bloom() (*bloom.Filter, error) {
+	b, err := d.bytes()
+	if err != nil {
+		return nil, err
+	}
+	f, err := bloom.Unmarshal(b)
+	if err != nil {
+		return nil, d.fail("invalid bloom filter: %v", err)
+	}
+	return f, nil
+}
+
+func (d *decoder) hll() (*hll.HLL, error) {
+	b, err := d.bytes()
+	if err != nil {
+		return nil, err
+	}
+	h, err := hll.Unmarshal(b)
+	if err != nil {
+		return nil, d.fail("invalid hyperloglog: %v", err)
+	}
+	return h, nil
 }

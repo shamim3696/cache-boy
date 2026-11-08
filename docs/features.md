@@ -158,6 +158,8 @@ The path syntax is `$`, `.field`, `["field"]`, `[index]` (negative indexes allow
 | `TS.RANGE key from\|- to\|+ [AGGREGATION avg\|sum\|min\|max\|count\|first\|last\|range bucket_ms]` | array of `[timestamp, value]`. Values are doubles. |
 | `TS.INFO key` | map `{totalSamples, retentionTime, firstTimestamp, lastTimestamp, labels}` |
 
+Samples are stored in chunks of 256. The newest chunk is a plain array, and older ones are Gorilla-compressed (delta-of-delta timestamps, XOR-encoded values). A regular series with slowly changing values takes about 1.2 bytes per sample instead of 16. Writing an older timestamp recompresses the one chunk it falls in.
+
 ## Vector similarity search
 
 | Command | Reply |
@@ -198,3 +200,31 @@ TypeScript SDK:
 const llm = cache.semanticCache("answers", { embed: (t) => openai.embed(t), threshold: 0.9, ttl: "1d" });
 const answer = await llm.wrap(question, () => openai.chat(question));
 ```
+
+## Bloom filters
+
+RedisBloom-compatible syntax and replies. A filter answers "definitely not added" or "probably added". It never gives a false negative.
+
+| Command | Reply |
+|---|---|
+| `BF.RESERVE key error_rate capacity [EXPANSION n] [NONSCALING]` | OK. Errors if the key exists. `0 < error_rate < 1`, `capacity > 0`, default EXPANSION 2. |
+| `BF.ADD key item` | integer 1 if the item was added, 0 if it may already have been there. A missing key gets a filter with error 0.01 and capacity 100. |
+| `BF.MADD key item [item ...]` | array of 1/0 (or an error per item, e.g. a full NONSCALING filter) |
+| `BF.EXISTS key item` | integer 1 if the item may exist, 0 if it surely doesn't (also 0 for a missing key) |
+| `BF.MEXISTS key item [item ...]` | array of 1/0 |
+| `BF.CARD key` | integer: items added (0 for a missing key) |
+| `BF.INFO key [CAPACITY\|SIZE\|FILTERS\|ITEMS\|EXPANSION]` | map `{Capacity, Size, Number of filters, Number of items inserted, Expansion rate}`, or a one-element array with the requested field. `Size` is bytes of memory. Expansion rate is null for NONSCALING filters. |
+
+`TYPE` returns `MBbloom--`, RedisBloom's type name. The filter is scalable: when the newest sub-filter is full, one `EXPANSION` times larger is added with half the error rate. The first sub-filter uses `error_rate / 2`, so the compound false-positive rate stays below `error_rate` however far the filter grows. RedisBloom uses `error_rate` for the first sub-filter and lets the compound rate drift above it. A `NONSCALING` filter uses `error_rate` as is, and `BF.ADD` fails with `ERR non scaling filter is full` once it holds `capacity` items. Hashing is deterministic (FNV-1a with murmur finalisers, double hashing), so the filters are persisted and replicated bit for bit.
+
+## HyperLogLog
+
+Redis's algorithm and commands: 16384 6-bit registers, MurmurHash64A, and Ertl's improved estimator (standard error 0.81%). Small sketches use a sparse representation and switch to the dense 12 KB one at about 3 KB.
+
+| Command | Reply |
+|---|---|
+| `PFADD key [element ...]` | integer 1 if a register changed (or the key was created), else 0 |
+| `PFCOUNT key [key ...]` | integer: estimated cardinality. With several keys, the cardinality of their union. Missing keys count as empty. |
+| `PFMERGE destkey [sourcekey ...]` | OK. destkey becomes the union of itself and the sources. |
+
+**Deviation from Redis:** Redis stores a HyperLogLog as a specially encoded string, so `GET`/`SET` work on it and `TYPE` says `string`. Here it is its own kind: `TYPE` returns `hyperloglog`, string commands on it fail with WRONGTYPE, and you can't build one by `SET`ting Redis's binary format.

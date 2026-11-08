@@ -91,6 +91,39 @@ const product = await cb.wrap(
 - `compute`: this client holds the compute lock. It runs `fn`, stores the result with `SET ... EX ttl TAGS ...`, and that write wakes every waiting client. If `fn` throws, it sends `CACHE.RELEASE` and rethrows.
 - `timeout`: another client's computation took longer than `waitMs`. This client runs `fn` itself and stores the result.
 
+#### Cache penetration
+
+Stampede protection handles keys that exist. Cache *penetration* is the opposite problem: lookups of ids that don't exist (a typo, a deleted row, a bot scanning `user:1..∞`). Nothing gets cached for them, so every request goes to the database. `wrap()` has two defences:
+
+```ts
+const user = await cb.wrap(`user:${id}`, () => db.users.find(id), {
+  ttl: 300,
+  negativeTtl: 30,                   // cache "not found" for 30 s
+  bloom: { key: 'users:ids', item: id }, // skip ids that were never created
+});
+// user is null for a missing id
+```
+
+- `negativeTtl` (seconds): when `fn` returns `null` or `undefined`, `wrap()` stores a sentinel for `negativeTtl` seconds instead of `ttl`. Lookups of that key resolve to `null` until the sentinel expires, without calling `fn`. The sentinel contains NUL characters, which JSON text never does, so a real cached value can't be mistaken for it. A custom `serialize` that returns the sentinel is rejected with a `TypeError`. Without `negativeTtl`, `null` is cached as JSON `null` for the full `ttl`, as before.
+- `bloom: { key, item? }`: before touching the cache, `wrap()` sends `BF.EXISTS key item` (`item` defaults to the cache key). If the filter says the id was definitely never added, `wrap()` resolves to `null` without calling the cache or `fn`. A Bloom filter has no false negatives, so real ids always get through. A small share of missing ids (the filter's error rate) still pass and are handled by `negativeTtl`. Add every id when it's created (`cb.bloom.add('users:ids', id)`) and backfill existing ones first: a missing filter counts as empty and lets nothing through.
+
+### Bloom filters and HyperLogLog
+
+```ts
+await cb.bloom.reserve('users:ids', 0.001, 1_000_000); // error rate, capacity [, { expansion, nonScaling }]
+await cb.bloom.add('users:ids', '42');                 // true if new
+await cb.bloom.madd('users:ids', ['43', '44']);        // [true, true]
+await cb.bloom.exists('users:ids', '99');              // false = definitely never added
+await cb.bloom.mexists('users:ids', ['42', '99']);     // [true, false]
+await cb.bloom.card('users:ids');                      // 3
+await cb.bloom.info('users:ids');                      // { capacity, size, filters, items, expansionRate }
+
+await cb.pfAdd('visitors:today', 'ip1', 'ip2');        // true if the estimate changed
+await cb.pfCount('visitors:today');                    // ≈ distinct count (0.81% standard error)
+await cb.pfCount('visitors:mon', 'visitors:tue');      // distinct over the union
+await cb.pfMerge('visitors:week', 'visitors:mon', 'visitors:tue');
+```
+
 ### Tags
 
 ```ts

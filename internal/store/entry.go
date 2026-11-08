@@ -5,7 +5,9 @@ import (
 	"time"
 
 	"cache-boy/internal/compression"
+	"cache-boy/internal/datatype/bloom"
 	"cache-boy/internal/datatype/deque"
+	"cache-boy/internal/datatype/hll"
 	"cache-boy/internal/datatype/jsondoc"
 	"cache-boy/internal/datatype/skiplist"
 	"cache-boy/internal/datatype/timeseries"
@@ -23,6 +25,8 @@ const (
 	KindJSON
 	KindTimeSeries
 	KindVector
+	KindBloom
+	KindHLL
 )
 
 func (k Kind) String() string {
@@ -43,6 +47,10 @@ func (k Kind) String() string {
 		return "timeseries"
 	case KindVector:
 		return "vectorset"
+	case KindBloom:
+		return "MBbloom--" // RedisBloom's type name, which clients switch on
+	case KindHLL:
+		return "hyperloglog"
 	}
 	return "none"
 }
@@ -59,6 +67,8 @@ func (k Kind) String() string {
 //	KindJSON       *jsondoc.Doc
 //	KindTimeSeries *timeseries.Series
 //	KindVector     *vector.Index
+//	KindBloom      *bloom.Filter
+//	KindHLL        *hll.HLL
 type Entry struct {
 	Kind     Kind
 	Value    sizer
@@ -79,6 +89,8 @@ func (e *Entry) ZSet() *skiplist.ZSet       { return e.Value.(*skiplist.ZSet) }
 func (e *Entry) JSON() *jsondoc.Doc         { return e.Value.(*jsondoc.Doc) }
 func (e *Entry) Series() *timeseries.Series { return e.Value.(*timeseries.Series) }
 func (e *Entry) Vectors() *vector.Index     { return e.Value.(*vector.Index) }
+func (e *Entry) Bloom() *bloom.Filter       { return e.Value.(*bloom.Filter) }
+func (e *Entry) HLL() *hll.HLL              { return e.Value.(*hll.HLL) }
 
 // LastAccess returns the last access time in unix ms (for OBJECT IDLETIME).
 func (e *Entry) LastAccess() int64 { return e.access }
