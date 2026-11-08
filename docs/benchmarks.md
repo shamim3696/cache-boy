@@ -33,3 +33,41 @@ When every client hammers **the same key** under heavy pipelining, Redis wins. c
 ## What was optimized
 
 Every write emits a key event, and seven subsystems listen to them: WATCH, BLPOP wake-ups, client tracking, tags, key watch, history and pub/sub. Each one used to take a global mutex on every write, even when the feature was unused. Each listener now checks an atomic counter first and returns without locking when nobody uses it. This removed the global serialization point for write commands.
+
+## After the data-structure round (W-TinyLFU, compact encodings, timing wheel, HNSW)
+
+Same setup, 100k random keys:
+
+| requests/sec | Redis 7, no pipeline | cache-boy, no pipeline | Redis 7, pipeline 16 | cache-boy, pipeline 16 |
+|---|---|---|---|---|
+| SET  | 59.8k | **133.4k** | 405–451k | 430–480k (3 runs each) |
+| GET  | 59.0k | **152.5k** | 486k | 461k |
+| INCR | 64.0k | **139.8k** | 545k | 535k |
+
+HSET and SADD in this tool write one hot key, so the "one hot key" caveat above still applies.
+
+### Memory per key (Go heap after GC, before → after compact encodings)
+
+| Workload | Before | After |
+|---|---|---|
+| Hash, 5 small fields | 613 B | **251 B** |
+| Set, 10 small ints (intset) | 664 B | **171 B** |
+| Set, 10 short strings (listpack) | 715 B | **243 B** |
+| Time series sample (Gorilla) | 18.8 B | **1.2 B** |
+
+### Cache hit ratio (`go test ./internal/eviction -run TestHitRatio -v`)
+
+Zipf traffic over 1M keys with a cache holding 5% of them:
+
+| Policy | Plain traffic | With periodic scans |
+|---|---|---|
+| allkeys-lru | 73.5% | 65.9% |
+| allkeys-lfu | 68.4% | 59.0% |
+| **allkeys-tinylfu** | **76.1%** | **74.6%** |
+
+### Vector search (HNSW, 128 dims, clustered data like real embeddings)
+
+| Vectors | Exact search | HNSW k=1 | Recall@10 |
+|---|---|---|---|
+| 10k | 447 µs | 91 µs | 1.000 |
+| 100k | 6.19 ms | 296 µs | 1.000 |

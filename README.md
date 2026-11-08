@@ -63,9 +63,10 @@ Every non-Redis command is documented in [docs/features.md](docs/features.md).
 
 ## What's supported
 
-- **Data types**: strings, lists, hashes, sets, sorted sets (skip list), JSON documents, time series, vector sets
+- **Data types**: strings, lists, hashes, sets, sorted sets (skip list), JSON documents, time series (Gorilla-compressed), vector sets (HNSW index), Bloom filters, HyperLogLog
+- **Compact encodings**: small hashes and sets are stored as listpacks and intsets, and integer strings as int64, as in Redis
 - **Keys**: TTLs (lazy and active expiry), SCAN, RENAME, COPY, OBJECT
-- **Memory**: `maxmemory` with LRU, LFU, random and TTL eviction (approximated like Redis); optional compression of large values
+- **Memory**: `maxmemory` with LRU, LFU, random, TTL and **W-TinyLFU** eviction (`allkeys-tinylfu`: a Count-Min Sketch plus a doorkeeper Bloom filter, which resists scans), an eviction pool, timing-wheel active expiry, and optional compression of large values
 - **Transactions**: MULTI / EXEC / WATCH, plus atomic server-side JavaScript (`EVAL`)
 - **AI**: semantic cache for LLM responses, vector similarity search
 - **Pub/Sub**: channels and patterns, key-change streams, webhooks
