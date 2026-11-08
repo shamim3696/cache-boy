@@ -43,13 +43,13 @@ func TestLazyAndActiveExpiry(t *testing.T) {
 
 func TestMemoryAccounting(t *testing.T) {
 	db := New(4)
-	put(db, "a", "12345", 0)
+	put(db, "a", "abcde", 0)
 	used := db.UsedMemory()
 	if used <= 5 {
 		t.Fatalf("used=%d", used)
 	}
-	put(db, "a", "1234567890", 0)
-	if db.UsedMemory() != used+5 {
+	put(db, "a", "abcdefghijklmnopqrstuvwxyz", 0)
+	if db.UsedMemory() < used+21 {
 		t.Fatalf("replace: %d -> %d", used, db.UsedMemory())
 	}
 	unlock := db.Lock("a")

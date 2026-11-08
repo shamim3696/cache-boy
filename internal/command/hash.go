@@ -3,8 +3,9 @@ package command
 import (
 	"math"
 	"math/rand/v2"
-	"sort"
+	"slices"
 	"strconv"
+	"strings"
 
 	"cache-boy/internal/protocol/resp"
 	"cache-boy/internal/store"
@@ -45,15 +46,18 @@ func getHash(x *Ctx, key string) (*store.Hash, bool) {
 	return e.Hash(), true
 }
 
-// sortedFields returns the hash's fields in a stable order, so replies don't
-// depend on Go's randomised map iteration.
-func sortedFields(h *store.Hash) []string {
-	fields := make([]string, 0, h.Len())
-	for f := range h.Map() {
-		fields = append(fields, f)
-	}
-	sort.Strings(fields)
-	return fields
+type fieldValue struct{ field, value string }
+
+// sortedPairs returns the hash's fields and values ordered by field, so
+// replies don't depend on the encoding's or Go's map iteration order.
+func sortedPairs(h *store.Hash) []fieldValue {
+	pairs := make([]fieldValue, 0, h.Len())
+	h.Range(func(f, v string) bool {
+		pairs = append(pairs, fieldValue{f, v})
+		return true
+	})
+	slices.SortFunc(pairs, func(a, b fieldValue) int { return strings.Compare(a.field, b.field) })
+	return pairs
 }
 
 // hsetCmd serves HSET and HMSET.
@@ -185,20 +189,19 @@ func hgetallCmd(x *Ctx) resp.Value {
 	if !ok {
 		return ErrWrongTyp
 	}
-	var fields []string
+	var pairs []fieldValue
 	if h != nil {
-		fields = sortedFields(h)
+		pairs = sortedPairs(h)
 	}
-	out := make([]resp.Value, 0, len(fields)*2)
-	for _, f := range fields {
-		v, _ := h.Get(f)
+	out := make([]resp.Value, 0, len(pairs)*2)
+	for _, p := range pairs {
 		switch x.Name {
 		case "hgetall":
-			out = append(out, resp.Bulk(f), resp.Bulk(v))
+			out = append(out, resp.Bulk(p.field), resp.Bulk(p.value))
 		case "hkeys":
-			out = append(out, resp.Bulk(f))
+			out = append(out, resp.Bulk(p.field))
 		default:
-			out = append(out, resp.Bulk(v))
+			out = append(out, resp.Bulk(p.value))
 		}
 	}
 	if x.Name == "hgetall" {
@@ -328,16 +331,15 @@ func hrandfieldCmd(x *Ctx) resp.Value {
 		}
 		return resp.Null()
 	}
-	fields := sortedFields(h)
+	pairs := sortedPairs(h)
 	if !hasCount {
-		return resp.Bulk(fields[rand.IntN(len(fields))])
+		return resp.Bulk(pairs[rand.IntN(len(pairs))].field)
 	}
 	var out []resp.Value
-	for _, i := range randomPicks(len(fields), count) {
-		out = append(out, resp.Bulk(fields[i]))
+	for _, i := range randomPicks(len(pairs), count) {
+		out = append(out, resp.Bulk(pairs[i].field))
 		if withValues {
-			v, _ := h.Get(fields[i])
-			out = append(out, resp.Bulk(v))
+			out = append(out, resp.Bulk(pairs[i].value))
 		}
 	}
 	return resp.Array(out...)
@@ -354,14 +356,13 @@ func hscanCmd(x *Ctx) resp.Value {
 	}
 	var items []resp.Value
 	if h != nil {
-		for _, f := range sortedFields(h) {
-			if !o.matches(f) {
+		for _, p := range sortedPairs(h) {
+			if !o.matches(p.field) {
 				continue
 			}
-			items = append(items, resp.Bulk(f))
+			items = append(items, resp.Bulk(p.field))
 			if !o.noValues {
-				v, _ := h.Get(f)
-				items = append(items, resp.Bulk(v))
+				items = append(items, resp.Bulk(p.value))
 			}
 		}
 	}

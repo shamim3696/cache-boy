@@ -143,3 +143,16 @@ func TestHLLPropagation(t *testing.T) {
 		t.Fatalf("propagated %q, want %q", got, want)
 	}
 }
+
+func TestCopyAndEncodingOfProbabilisticTypes(t *testing.T) {
+	e := newTestEngine(t)
+	c := e.NewClient("tcp", "test")
+	do(e, c, "BF.ADD", "bf", "a")
+	do(e, c, "PFADD", "hll", "x", "y")
+	mustStr(t, e, c, "1", "COPY", "bf", "bf2")
+	mustStr(t, e, c, "1", "COPY", "hll", "hll2")
+	mustStr(t, e, c, "1", "BF.EXISTS", "bf2", "a")
+	mustStr(t, e, c, "2", "PFCOUNT", "hll2")
+	mustStr(t, e, c, "bloom", "OBJECT", "ENCODING", "bf")
+	mustStr(t, e, c, "sparse", "OBJECT", "ENCODING", "hll")
+}

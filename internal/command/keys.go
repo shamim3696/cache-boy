@@ -288,6 +288,10 @@ func cloneEntry(x *Ctx, e *store.Entry) *store.Entry {
 			s.Add(p.TS, p.Value)
 		}
 		return store.NewEntry(e.Kind, s)
+	case store.KindBloom:
+		return store.NewEntry(e.Kind, e.Bloom().Clone())
+	case store.KindHLL:
+		return store.NewEntry(e.Kind, e.HLL().Clone())
 	case store.KindVector:
 		old := e.Vectors()
 		idx := vector.New()
@@ -440,31 +444,26 @@ func objectCmd(x *Ctx) resp.Value {
 func encodingOf(e *store.Entry) string {
 	switch e.Kind {
 	case store.KindString:
-		s := e.Str()
-		switch {
-		case s.Compressed():
-			return "compressed"
-		case s.Len() <= 20 && isInt(s.Bytes()):
-			return "int"
-		case s.Len() <= 44:
-			return "embstr"
-		}
-		return "raw"
+		return e.Str().Encoding()
+	case store.KindHash:
+		return e.Hash().Encoding()
+	case store.KindSet:
+		return e.Set().Encoding()
 	case store.KindList:
 		return "quicklist"
-	case store.KindHash, store.KindSet:
-		return "hashtable"
 	case store.KindZSet:
 		return "skiplist"
+	case store.KindTimeSeries:
+		return "gorilla"
+	case store.KindBloom:
+		return "bloom"
+	case store.KindHLL:
+		if e.HLL().IsSparse() {
+			return "sparse"
+		}
+		return "dense"
 	}
 	return e.Kind.String()
-}
-
-// isInt reports whether b is the canonical form of an int64 (what INCR accepts
-// and what Redis would store as an integer).
-func isInt(b []byte) bool {
-	n, ok := ParseInt(string(b))
-	return ok && strconv.FormatInt(n, 10) == string(b)
 }
 
 // --- helpers shared by the data type files ---
