@@ -1,23 +1,26 @@
 package vector
 
 import (
+	"cmp"
 	"math"
-	"sort"
+	"slices"
 )
 
 // hnsw is a Hierarchical Navigable Small World graph (Malkov & Yashunin,
 // arXiv:1603.09320) over the index's unit vectors, with distance 1 − dot.
 //
-// Deleted or replaced vectors stay in the graph as tombstones (slot < 0):
-// they still route searches but are never returned. The owning Index throws
-// the graph away once tombstones pass a quarter of the nodes.
+// Deleted vectors stay in the graph as tombstones (slot < 0): they still
+// route searches but are never returned. The next insert takes over a
+// tombstone's node instead of growing the graph, repairing its neighbours
+// locally, so churn never needs a full rebuild and memory stays bounded by
+// the peak number of live vectors.
 type hnsw struct {
 	m, mMax0, efc int
 	mL            float64
 	nodes         []hnode
-	entry         int32 // -1 while empty
-	top           int   // level of entry
-	dead          int
+	free          []int32 // tombstoned nodes, reused LIFO
+	entry         int32   // -1 while empty
+	top           int     // level of entry
 	linkBytes     int64
 
 	// Scratch reused across calls; like the rest of Index, not safe for
@@ -27,6 +30,13 @@ type hnsw struct {
 	fseen []uint32 // filter verdict cache, valid where fseen[n] == fgen
 	fok   []bool
 	fgen  uint32
+	excl  int32 // node being re-linked, invisible to its own search
+	cand  minItems
+	res   maxItems
+	eps   []item
+	sel   []item
+	prune []item
+	nbrs  []int32
 }
 
 type hnode struct {
@@ -43,7 +53,7 @@ type item struct {
 
 func newHNSW(m, efc int) *hnsw {
 	m = max(m, 2)
-	return &hnsw{m: m, mMax0: 2 * m, efc: max(efc, m), mL: 1 / math.Log(float64(m)), entry: -1}
+	return &hnsw{m: m, mMax0: 2 * m, efc: max(efc, m), mL: 1 / math.Log(float64(m)), entry: -1, excl: -1}
 }
 
 func (g *hnsw) maxLinks(level int) int {
@@ -53,9 +63,11 @@ func (g *hnsw) maxLinks(level int) int {
 	return g.m
 }
 
+func (g *hnsw) live() int { return len(g.nodes) - len(g.free) }
+
 // levelFor draws floor(-ln(U)·mL) with U derived from a hash of id rather
-// than a shared RNG, so a replica or a snapshot reload that inserts the same
-// ids in the same order builds the identical graph.
+// than a shared RNG, so a replica or a snapshot reload that applies the same
+// operations in the same order builds the identical graph.
 func levelFor(id string, mL float64) int {
 	h := uint64(14695981039346656037)
 	for i := 0; i < len(id); i++ {
@@ -95,8 +107,16 @@ func dot(a, b []float32) float32 {
 
 func dist(a, b []float32) float32 { return 1 - dot(a, b) }
 
-// insert adds vec as a new node (Algorithm 1) and returns its node number.
+// insert stores vec, reusing a tombstoned node when one is free, and
+// returns its node number. level is used only for a brand-new node; a
+// reused node keeps its own so the layers above stay consistent.
 func (g *hnsw) insert(vec []float32, slot int32, level int) int32 {
+	if n, ok := g.takeFree(); ok {
+		g.unlink(n)
+		g.nodes[n].vec, g.nodes[n].slot = vec, slot
+		g.link(n, len(g.nodes[n].links)-1)
+		return n
+	}
 	n := int32(len(g.nodes))
 	links := make([][]int32, level+1)
 	for l := range links {
@@ -104,48 +124,114 @@ func (g *hnsw) insert(vec []float32, slot int32, level int) int32 {
 		g.linkBytes += int64(cap(links[l]))*4 + 24
 	}
 	g.nodes = append(g.nodes, hnode{vec: vec, slot: slot, links: links})
+	if len(g.visit) < len(g.nodes) {
+		g.visit = append(g.visit, make([]uint32, len(g.nodes)-len(g.visit))...)
+	}
 	if g.entry < 0 {
 		g.entry, g.top = n, level
 		return n
 	}
-	ep := g.entry
-	epd := dist(vec, g.nodes[ep].vec)
-	for l := g.top; l > level; l-- {
-		ep, epd = g.greedy(vec, ep, epd, l)
-	}
-	eps := []item{{epd, ep}}
-	for l := min(level, g.top); l >= 0; l-- {
-		w := g.searchLayer(vec, eps, g.efc, l, nil)
-		for _, e := range g.selectNeighbors(w, g.m) {
-			g.nodes[n].links[l] = append(g.nodes[n].links[l], e.n)
-			g.connect(e.n, n, e.d, l)
-		}
-		eps = w
-	}
+	g.link(n, level)
 	if level > g.top {
 		g.entry, g.top = n, level
 	}
 	return n
 }
 
+// takeFree pops a tombstone to reuse. The entry point is never reused:
+// clearing its links would cut every search off at the top.
+func (g *hnsw) takeFree() (int32, bool) {
+	k := len(g.free) - 1
+	if k >= 0 && g.free[k] == g.entry {
+		k--
+	}
+	if k < 0 {
+		return 0, false
+	}
+	n := g.free[k]
+	g.free = slices.Delete(g.free, k, k+1)
+	return n, true
+}
+
+// link connects node n, whose links are empty, at levels 0..level
+// (Algorithm 1 without the node allocation).
+func (g *hnsw) link(n int32, level int) {
+	vec := g.nodes[n].vec
+	g.excl = n
+	defer func() { g.excl = -1 }()
+	ep := g.entry
+	epd := dist(vec, g.nodes[ep].vec)
+	for l := g.top; l > level; l-- {
+		ep, epd = g.greedy(vec, ep, epd, l)
+	}
+	g.eps = append(g.eps[:0], item{epd, ep})
+	for l := min(level, g.top); l >= 0; l-- {
+		w := g.searchLayer(vec, g.eps, g.efc, l, nil)
+		g.sel = g.selectNeighbors(w, g.m, g.sel[:0])
+		for _, e := range g.sel {
+			g.nodes[n].links[l] = append(g.nodes[n].links[l], e.n)
+		}
+		g.eps = append(g.eps[:0], w...)
+		for _, e := range g.sel {
+			g.connect(e.n, n, e.d, l)
+		}
+	}
+}
+
+// unlink detaches tombstone n before reuse. Each out-neighbour e drops its
+// edge to n and re-selects its links with the heuristic over its own links
+// plus n's other neighbours, the two-hop set that n used to bridge. Edges
+// into n from elsewhere are left and will point at the new vector, as in
+// hnswlib's replace_deleted; they remain valid, if longer, routes.
+func (g *hnsw) unlink(n int32) {
+	for l, out := range g.nodes[n].links {
+		g.nbrs = append(g.nbrs[:0], out...)
+		for _, e := range g.nbrs {
+			ev := g.nodes[e].vec
+			g.newVisit()
+			g.visit[e], g.visit[n] = g.vgen, g.vgen
+			g.prune = g.prune[:0]
+			for _, src := range [2][]int32{g.nodes[e].links[l], g.nbrs} {
+				for _, c := range src {
+					if g.visit[c] != g.vgen {
+						g.visit[c] = g.vgen
+						g.prune = append(g.prune, item{dist(ev, g.nodes[c].vec), c})
+					}
+				}
+			}
+			sortItems(g.prune)
+			g.setLinks(e, l, g.prune)
+		}
+		g.nodes[n].links[l] = g.nodes[n].links[l][:0]
+	}
+}
+
 // connect adds the edge e→n at level l, re-pruning e's list with the
 // heuristic when it overflows so hubs don't lose their long-range links.
 func (g *hnsw) connect(e, n int32, d float32, l int) {
 	links := g.nodes[e].links[l]
-	limit := g.maxLinks(l)
-	if len(links) < limit {
+	if slices.Contains(links, n) {
+		return
+	}
+	if len(links) < g.maxLinks(l) {
 		g.nodes[e].links[l] = append(links, n)
 		return
 	}
 	ev := g.nodes[e].vec
-	cands := make([]item, 0, len(links)+1)
-	cands = append(cands, item{d, n})
+	g.prune = append(g.prune[:0], item{d, n})
 	for _, o := range links {
-		cands = append(cands, item{dist(ev, g.nodes[o].vec), o})
+		g.prune = append(g.prune, item{dist(ev, g.nodes[o].vec), o})
 	}
-	sortItems(cands)
-	kept := g.selectNeighbors(cands, limit)
-	links = links[:0]
+	sortItems(g.prune)
+	g.setLinks(e, l, g.prune)
+}
+
+// setLinks replaces e's links at l with the heuristic choice from sorted
+// cands. It works in place: selection only ever keeps a prefix-ordered
+// subset, so writing over cands as we go is safe.
+func (g *hnsw) setLinks(e int32, l int, cands []item) {
+	kept := g.selectNeighbors(cands, g.maxLinks(l), cands[:0])
+	links := g.nodes[e].links[l][:0]
 	for _, k := range kept {
 		links = append(links, k.n)
 	}
@@ -155,13 +241,12 @@ func (g *hnsw) connect(e, n int32, d float32, l int) {
 // selectNeighbors is the heuristic of Algorithm 4: walking candidates from
 // nearest, keep one only if it is closer to the base than to every neighbour
 // already kept. This favours edges in diverse directions, which keeps
-// clustered data navigable where plain "M closest" would not.
-// cands must be sorted by distance.
-func (g *hnsw) selectNeighbors(cands []item, m int) []item {
+// clustered data navigable where plain "M closest" would not. cands must be
+// sorted by distance; the result is appended to out, which may alias cands.
+func (g *hnsw) selectNeighbors(cands []item, m int, out []item) []item {
 	if len(cands) <= m {
-		return cands
+		return append(out, cands...)
 	}
-	out := make([]item, 0, m)
 	for _, c := range cands {
 		cv := g.nodes[c.n].vec
 		good := true
@@ -186,6 +271,9 @@ func (g *hnsw) greedy(q []float32, ep int32, epd float32, l int) (int32, float32
 	for changed := true; changed; {
 		changed = false
 		for _, nb := range g.nodes[ep].links[l] {
+			if nb == g.excl {
+				continue
+			}
 			if d := dist(q, g.nodes[nb].vec); d < epd {
 				ep, epd, changed = nb, d, true
 			}
@@ -194,34 +282,37 @@ func (g *hnsw) greedy(q []float32, ep int32, epd float32, l int) (int32, float32
 	return ep, epd
 }
 
-// searchLayer is Algorithm 2: a best-first search keeping the ef nearest
-// nodes that pass accept (nil accepts all). Rejected nodes are still
-// expanded, so tombstones and filtered-out nodes keep the graph connected.
-// The result is sorted nearest first.
-func (g *hnsw) searchLayer(q []float32, eps []item, ef, l int, accept func(int32) bool) []item {
-	if len(g.visit) < len(g.nodes) {
-		g.visit = append(g.visit, make([]uint32, len(g.nodes)-len(g.visit))...)
-	}
+func (g *hnsw) newVisit() {
 	g.vgen++
 	if g.vgen == 0 {
 		clear(g.visit)
 		g.vgen = 1
 	}
-	var cand minItems
-	var res maxItems
+}
+
+// searchLayer is Algorithm 2: a best-first search keeping the ef nearest
+// nodes that pass accept (nil accepts all). Rejected nodes are still
+// expanded, so tombstones and filtered-out nodes keep the graph connected.
+// The result is sorted nearest first and valid until the next call.
+func (g *hnsw) searchLayer(q []float32, eps []item, ef, l int, accept func(int32) bool) []item {
+	g.newVisit()
+	if g.excl >= 0 {
+		g.visit[g.excl] = g.vgen
+	}
+	g.cand, g.res = g.cand[:0], g.res[:0]
 	for _, e := range eps {
 		g.visit[e.n] = g.vgen
-		cand.push(e)
+		g.cand.push(e)
 		if accept == nil || accept(e.n) {
-			res.push(e)
-			if len(res) > ef {
-				res.pop()
+			g.res.push(e)
+			if len(g.res) > ef {
+				g.res.pop()
 			}
 		}
 	}
-	for len(cand) > 0 {
-		c := cand.pop()
-		if len(res) >= ef && c.d > res[0].d {
+	for len(g.cand) > 0 {
+		c := g.cand.pop()
+		if len(g.res) >= ef && c.d > g.res[0].d {
 			break
 		}
 		for _, nb := range g.nodes[c.n].links[l] {
@@ -230,18 +321,18 @@ func (g *hnsw) searchLayer(q []float32, eps []item, ef, l int, accept func(int32
 			}
 			g.visit[nb] = g.vgen
 			d := dist(q, g.nodes[nb].vec)
-			if len(res) < ef || d < res[0].d {
-				cand.push(item{d, nb})
+			if len(g.res) < ef || d < g.res[0].d {
+				g.cand.push(item{d, nb})
 				if accept == nil || accept(nb) {
-					res.push(item{d, nb})
-					if len(res) > ef {
-						res.pop()
+					g.res.push(item{d, nb})
+					if len(g.res) > ef {
+						g.res.pop()
 					}
 				}
 			}
 		}
 	}
-	out := []item(res)
+	out := []item(g.res)
 	sortItems(out)
 	return out
 }
@@ -261,7 +352,7 @@ func (g *hnsw) search(q []float32, ef int, accept func(int32) bool) []item {
 
 func (g *hnsw) kill(n int32) {
 	g.nodes[n].slot = -1
-	g.dead++
+	g.free = append(g.free, n)
 }
 
 // newQuery starts a fresh filter-verdict generation.
@@ -277,18 +368,19 @@ func (g *hnsw) newQuery() {
 	}
 }
 
-// memSize counts links, node headers and scratch; vectors are shared with
-// Index and counted there.
+// memSize counts links, node headers and scratch. Vectors of live nodes are
+// shared with Index and counted there; tombstones' old vectors are not.
 func (g *hnsw) memSize() int64 {
-	return g.linkBytes + int64(cap(g.nodes))*56 + int64(cap(g.visit))*4 + int64(cap(g.fseen))*5 + 96
+	return g.linkBytes + int64(cap(g.nodes))*56 + int64(cap(g.visit))*4 +
+		int64(cap(g.fseen))*5 + int64(cap(g.free))*4 + 256
 }
 
 func sortItems(s []item) {
-	sort.Slice(s, func(i, j int) bool {
-		if s[i].d != s[j].d {
-			return s[i].d < s[j].d
+	slices.SortFunc(s, func(a, b item) int {
+		if c := cmp.Compare(a.d, b.d); c != 0 {
+			return c
 		}
-		return s[i].n < s[j].n
+		return cmp.Compare(a.n, b.n)
 	})
 }
 

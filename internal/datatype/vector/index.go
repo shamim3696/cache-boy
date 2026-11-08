@@ -17,7 +17,7 @@ type Result struct {
 // most once per id.
 //
 // Below Params.Threshold vectors (or when k covers the whole index) the scan
-// is exact. Otherwise the HNSW graph is built on first use and answers
+// is exact. Otherwise the HNSW graph, which Add keeps up to date, answers
 // approximately; if it finds fewer than k matches passing the filter, Search
 // falls back to the exact scan so a selective filter never loses results.
 func (x *Index) Search(q []float32, k int, filter func(id, attr string) bool) ([]Result, error) {
@@ -28,11 +28,8 @@ func (x *Index) Search(q []float32, k int, filter func(id, attr string) bool) ([
 		return []Result{}, nil
 	}
 	qn := normalize(q)
-	if x.Len() < x.Params.Threshold || k >= x.Len() {
+	if x.g == nil || x.pending > 0 || x.Len() < x.Params.Threshold || k >= x.Len() {
 		return x.exact(qn, k, func(i int) bool { return filter == nil || filter(x.ids[i], x.attr[i]) }), nil
-	}
-	if x.g == nil {
-		x.buildGraph()
 	}
 	g := x.g
 	g.newQuery()
@@ -55,7 +52,7 @@ func (x *Index) Search(q []float32, k int, filter func(id, attr string) bool) ([
 	if filter != nil {
 		// Rejected nodes don't fill the result list, but a wider beam
 		// still finds more survivors before the fallback is needed.
-		ef = max(4*x.Params.EfSearch, efPerResult*k)
+		ef = max(2*x.Params.EfSearch, efPerResult*k)
 	}
 	w := g.search(qn, ef, accept)
 	if len(w) < k {
@@ -69,18 +66,6 @@ func (x *Index) Search(q []float32, k int, filter func(id, attr string) bool) ([
 	}
 	sortResults(out)
 	return out[:k], nil
-}
-
-// buildGraph inserts every live vector in slot order, which matches IDs()
-// and therefore snapshot order, so reloads reproduce the same graph.
-func (x *Index) buildGraph() {
-	g := newHNSW(x.Params.M, x.Params.EfConstruction)
-	g.nodes = make([]hnode, 0, len(x.ids))
-	x.node = make([]int32, len(x.ids))
-	for i, id := range x.ids {
-		x.node[i] = g.insert(x.vecs[i], int32(i), levelFor(id, g.mL))
-	}
-	x.g = g
 }
 
 // exact scans every slot that passes accept.
