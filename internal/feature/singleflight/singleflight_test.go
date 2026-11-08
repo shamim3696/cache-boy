@@ -4,7 +4,7 @@ import (
 	"testing"
 	"time"
 
-	"cache-boy/internal/store"
+	"github.com/shamim3696/cache-boy/internal/store"
 )
 
 func TestComputeLock(t *testing.T) {

@@ -1,6 +1,6 @@
 package eviction
 
-import "cache-boy/internal/store"
+import "github.com/shamim3696/cache-boy/internal/store"
 
 // tinyLFUBetter prefers the key with the lowest recent access frequency, as
 // estimated by the shard's TinyLFU sketch, and among equals the one idle the

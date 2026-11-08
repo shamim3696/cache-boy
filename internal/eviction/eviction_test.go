@@ -5,8 +5,8 @@ import (
 	"sync"
 	"testing"
 
-	"cache-boy/internal/config"
-	"cache-boy/internal/store"
+	"github.com/shamim3696/cache-boy/internal/config"
+	"github.com/shamim3696/cache-boy/internal/store"
 )
 
 func fill(db *store.DB, n int) {

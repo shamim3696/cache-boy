@@ -4,8 +4,8 @@ import (
 	"testing"
 	"time"
 
-	"cache-boy/internal/config"
-	"cache-boy/internal/persistence"
+	"github.com/shamim3696/cache-boy/internal/config"
+	"github.com/shamim3696/cache-boy/internal/persistence"
 )
 
 func TestPersistenceCommands(t *testing.T) {

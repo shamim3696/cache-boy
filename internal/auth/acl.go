@@ -7,7 +7,7 @@ import (
 	"sort"
 	"strings"
 
-	"cache-boy/internal/glob"
+	"github.com/shamim3696/cache-boy/internal/glob"
 )
 
 // SetUser creates or modifies a user with ACL rules, e.g.

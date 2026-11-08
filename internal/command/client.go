@@ -6,8 +6,8 @@ import (
 	"sync/atomic"
 	"time"
 
-	"cache-boy/internal/protocol/resp"
-	"cache-boy/internal/transaction"
+	"github.com/shamim3696/cache-boy/internal/protocol/resp"
+	"github.com/shamim3696/cache-boy/internal/transaction"
 )
 
 // outBuffer is how many replies/pushes can be queued for a client before a

@@ -11,8 +11,8 @@ import (
 	"sync"
 	"sync/atomic"
 
-	"cache-boy/internal/config"
-	"cache-boy/internal/store"
+	"github.com/shamim3696/cache-boy/internal/config"
+	"github.com/shamim3696/cache-boy/internal/store"
 )
 
 var ErrOOM = errors.New("OOM command not allowed when used memory > 'maxmemory'.")

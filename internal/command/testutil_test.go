@@ -3,8 +3,8 @@ package command
 import (
 	"testing"
 
-	"cache-boy/internal/config"
-	"cache-boy/internal/protocol/resp"
+	"github.com/shamim3696/cache-boy/internal/config"
+	"github.com/shamim3696/cache-boy/internal/protocol/resp"
 )
 
 // newTestEngine returns an engine with default config (no persistence).

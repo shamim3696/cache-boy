@@ -4,13 +4,13 @@ import (
 	"math/rand/v2"
 	"time"
 
-	"cache-boy/internal/datatype/bloom"
-	"cache-boy/internal/datatype/deque"
-	"cache-boy/internal/datatype/hll"
-	"cache-boy/internal/datatype/jsondoc"
-	"cache-boy/internal/datatype/skiplist"
-	"cache-boy/internal/datatype/timeseries"
-	"cache-boy/internal/datatype/vector"
+	"github.com/shamim3696/cache-boy/internal/datatype/bloom"
+	"github.com/shamim3696/cache-boy/internal/datatype/deque"
+	"github.com/shamim3696/cache-boy/internal/datatype/hll"
+	"github.com/shamim3696/cache-boy/internal/datatype/jsondoc"
+	"github.com/shamim3696/cache-boy/internal/datatype/skiplist"
+	"github.com/shamim3696/cache-boy/internal/datatype/timeseries"
+	"github.com/shamim3696/cache-boy/internal/datatype/vector"
 )
 
 type Kind uint8

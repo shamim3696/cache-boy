@@ -12,16 +12,16 @@ import (
 	"testing"
 	"time"
 
-	"cache-boy/internal/command"
-	"cache-boy/internal/config"
-	"cache-boy/internal/datatype/deque"
-	"cache-boy/internal/datatype/jsondoc"
-	"cache-boy/internal/datatype/skiplist"
-	"cache-boy/internal/datatype/timeseries"
-	"cache-boy/internal/datatype/vector"
-	"cache-boy/internal/persistence/snapshot"
-	"cache-boy/internal/protocol/resp"
-	"cache-boy/internal/store"
+	"github.com/shamim3696/cache-boy/internal/command"
+	"github.com/shamim3696/cache-boy/internal/config"
+	"github.com/shamim3696/cache-boy/internal/datatype/deque"
+	"github.com/shamim3696/cache-boy/internal/datatype/jsondoc"
+	"github.com/shamim3696/cache-boy/internal/datatype/skiplist"
+	"github.com/shamim3696/cache-boy/internal/datatype/timeseries"
+	"github.com/shamim3696/cache-boy/internal/datatype/vector"
+	"github.com/shamim3696/cache-boy/internal/persistence/snapshot"
+	"github.com/shamim3696/cache-boy/internal/protocol/resp"
+	"github.com/shamim3696/cache-boy/internal/store"
 )
 
 // A module command that records what it was called with.

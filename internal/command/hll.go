@@ -1,9 +1,9 @@
 package command
 
 import (
-	"cache-boy/internal/datatype/hll"
-	"cache-boy/internal/protocol/resp"
-	"cache-boy/internal/store"
+	"github.com/shamim3696/cache-boy/internal/datatype/hll"
+	"github.com/shamim3696/cache-boy/internal/protocol/resp"
+	"github.com/shamim3696/cache-boy/internal/store"
 )
 
 // HyperLogLog commands. Unlike Redis, a sketch is its own kind (TYPE says

@@ -7,7 +7,7 @@ import (
 	"sync"
 	"sync/atomic"
 
-	"cache-boy/internal/store"
+	"github.com/shamim3696/cache-boy/internal/store"
 )
 
 type Watcher struct {

@@ -6,8 +6,8 @@ import (
 	"net"
 	"time"
 
-	"cache-boy/internal/command"
-	"cache-boy/internal/protocol/resp"
+	"github.com/shamim3696/cache-boy/internal/command"
+	"github.com/shamim3696/cache-boy/internal/protocol/resp"
 )
 
 // handle runs one client connection until it closes.

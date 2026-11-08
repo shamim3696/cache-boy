@@ -12,8 +12,8 @@ import (
 	"sync/atomic"
 	"time"
 
-	"cache-boy/internal/persistence/snapshot"
-	"cache-boy/internal/protocol/resp"
+	"github.com/shamim3696/cache-boy/internal/persistence/snapshot"
+	"github.com/shamim3696/cache-boy/internal/protocol/resp"
 )
 
 // link is the follower's connection to its leader. It survives reconnects:

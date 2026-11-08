@@ -5,8 +5,8 @@ import (
 	"fmt"
 	"os"
 
-	"cache-boy/internal/command"
-	"cache-boy/internal/persistence/snapshot"
+	"github.com/shamim3696/cache-boy/internal/command"
+	"github.com/shamim3696/cache-boy/internal/persistence/snapshot"
 )
 
 // ErrRewriteInProgress is returned when a rewrite is already running.

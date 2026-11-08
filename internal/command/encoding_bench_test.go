@@ -4,7 +4,7 @@ import (
 	"strconv"
 	"testing"
 
-	"cache-boy/internal/config"
+	"github.com/shamim3696/cache-boy/internal/config"
 )
 
 func newBenchEngine(b *testing.B) (*Engine, *Client) {

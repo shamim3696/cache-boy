@@ -8,13 +8,13 @@ import (
 	"strings"
 	"time"
 
-	"cache-boy/internal/api/apiutil"
-	"cache-boy/internal/command"
-	"cache-boy/internal/feature/namespace"
-	"cache-boy/internal/glob"
-	"cache-boy/internal/observability"
-	"cache-boy/internal/protocol/resp"
-	"cache-boy/internal/store"
+	"github.com/shamim3696/cache-boy/internal/api/apiutil"
+	"github.com/shamim3696/cache-boy/internal/command"
+	"github.com/shamim3696/cache-boy/internal/feature/namespace"
+	"github.com/shamim3696/cache-boy/internal/glob"
+	"github.com/shamim3696/cache-boy/internal/observability"
+	"github.com/shamim3696/cache-boy/internal/protocol/resp"
+	"github.com/shamim3696/cache-boy/internal/store"
 )
 
 // POST /v1/command  ["SET","a","1"] → {"result": ...} | {"error": ...}

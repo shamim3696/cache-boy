@@ -3,8 +3,8 @@ package command
 import (
 	"net/url"
 
-	"cache-boy/internal/feature/watch"
-	"cache-boy/internal/protocol/resp"
+	"github.com/shamim3696/cache-boy/internal/feature/watch"
+	"github.com/shamim3696/cache-boy/internal/protocol/resp"
 )
 
 // Key change streams (KEYWATCH) and webhooks (feature/watch).

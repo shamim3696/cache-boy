@@ -3,8 +3,8 @@ package command
 import (
 	"strconv"
 
-	"cache-boy/internal/feature/semcache"
-	"cache-boy/internal/protocol/resp"
+	"github.com/shamim3696/cache-boy/internal/feature/semcache"
+	"github.com/shamim3696/cache-boy/internal/protocol/resp"
 )
 
 // Semantic cache for LLM responses (feature/semcache). Cache names are

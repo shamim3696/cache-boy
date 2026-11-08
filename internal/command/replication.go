@@ -5,7 +5,7 @@ import (
 	"sync"
 	"time"
 
-	"cache-boy/internal/protocol/resp"
+	"github.com/shamim3696/cache-boy/internal/protocol/resp"
 )
 
 // Replication commands. The work is done by e.Repl (package replication).

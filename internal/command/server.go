@@ -8,17 +8,18 @@ import (
 	"strings"
 	"time"
 
-	"cache-boy/internal/config"
-	"cache-boy/internal/protocol/resp"
-	"cache-boy/internal/tracking"
+	"github.com/shamim3696/cache-boy/internal/config"
+	"github.com/shamim3696/cache-boy/internal/protocol/resp"
+	"github.com/shamim3696/cache-boy/internal/tracking"
 )
 
-// Version is the cache-boy release. redis_version in INFO is what client
-// libraries check for feature support.
-const (
-	Version      = "0.1.0"
-	RedisVersion = "7.2.0"
-)
+// Version is the cache-boy release; release builds set it with
+// -ldflags "-X github.com/shamim3696/cache-boy/internal/command.Version=x.y.z".
+var Version = "0.1.0-dev"
+
+// RedisVersion is reported as redis_version in INFO; client libraries check
+// it for feature support.
+const RedisVersion = "7.2.0"
 
 func init() {
 	Register(

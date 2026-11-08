@@ -6,7 +6,7 @@ import (
 	"testing"
 	"time"
 
-	"cache-boy/internal/protocol/resp"
+	"github.com/shamim3696/cache-boy/internal/protocol/resp"
 )
 
 func ftQlen(t *testing.T, e *Engine, c *Client, q string) string {

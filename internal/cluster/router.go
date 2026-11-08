@@ -8,10 +8,10 @@ import (
 	"strconv"
 	"strings"
 
-	"cache-boy/internal/command"
-	"cache-boy/internal/feature/namespace"
-	"cache-boy/internal/protocol/resp"
-	"cache-boy/internal/store"
+	"github.com/shamim3696/cache-boy/internal/command"
+	"github.com/shamim3696/cache-boy/internal/feature/namespace"
+	"github.com/shamim3696/cache-boy/internal/protocol/resp"
+	"github.com/shamim3696/cache-boy/internal/store"
 )
 
 // Node is one cluster member from the configuration.

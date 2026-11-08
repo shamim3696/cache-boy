@@ -7,8 +7,8 @@ import (
 	"strconv"
 	"strings"
 
-	"cache-boy/internal/protocol/resp"
-	"cache-boy/internal/store"
+	"github.com/shamim3696/cache-boy/internal/protocol/resp"
+	"github.com/shamim3696/cache-boy/internal/store"
 )
 
 func init() {

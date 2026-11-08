@@ -6,8 +6,8 @@ import (
 	"testing"
 	"time"
 
-	"cache-boy/internal/config"
-	"cache-boy/internal/store"
+	"github.com/shamim3696/cache-boy/internal/config"
+	"github.com/shamim3696/cache-boy/internal/store"
 )
 
 // 100k keys with a 1 s TTL that are never read again must all be freed by

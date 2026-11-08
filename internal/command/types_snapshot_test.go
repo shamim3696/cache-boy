@@ -8,9 +8,9 @@ import (
 	"sync"
 	"testing"
 
-	"cache-boy/internal/command"
-	"cache-boy/internal/persistence/snapshot"
-	"cache-boy/internal/store"
+	"github.com/shamim3696/cache-boy/internal/command"
+	"github.com/shamim3696/cache-boy/internal/persistence/snapshot"
+	"github.com/shamim3696/cache-boy/internal/store"
 )
 
 type cmdLog struct {

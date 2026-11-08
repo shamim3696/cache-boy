@@ -15,9 +15,9 @@ import (
 	"sync/atomic"
 	"time"
 
-	"cache-boy/internal/command"
-	"cache-boy/internal/persistence/aof"
-	"cache-boy/internal/persistence/snapshot"
+	"github.com/shamim3696/cache-boy/internal/command"
+	"github.com/shamim3696/cache-boy/internal/persistence/aof"
+	"github.com/shamim3696/cache-boy/internal/persistence/snapshot"
 )
 
 // ErrBgSaveInProgress is returned by Save/BgSave while a background save runs.

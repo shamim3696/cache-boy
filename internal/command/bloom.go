@@ -3,9 +3,9 @@ package command
 import (
 	"math"
 
-	"cache-boy/internal/datatype/bloom"
-	"cache-boy/internal/protocol/resp"
-	"cache-boy/internal/store"
+	"github.com/shamim3696/cache-boy/internal/datatype/bloom"
+	"github.com/shamim3696/cache-boy/internal/protocol/resp"
+	"github.com/shamim3696/cache-boy/internal/store"
 )
 
 // Bloom filter commands, with RedisBloom's syntax and replies. Hashing is

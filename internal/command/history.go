@@ -3,7 +3,7 @@ package command
 import (
 	"bytes"
 
-	"cache-boy/internal/protocol/resp"
+	"github.com/shamim3696/cache-boy/internal/protocol/resp"
 )
 
 // Key history (feature/history), enabled with CONFIG SET history-depth N.

@@ -6,8 +6,8 @@ import (
 	"sync"
 	"testing"
 
-	"cache-boy/internal/feature/scripting"
-	"cache-boy/internal/protocol/resp"
+	"github.com/shamim3696/cache-boy/internal/feature/scripting"
+	"github.com/shamim3696/cache-boy/internal/protocol/resp"
 )
 
 func TestFeatureEval(t *testing.T) {

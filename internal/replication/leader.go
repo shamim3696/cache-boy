@@ -12,9 +12,9 @@ import (
 	"sync/atomic"
 	"time"
 
-	"cache-boy/internal/command"
-	"cache-boy/internal/persistence/snapshot"
-	"cache-boy/internal/protocol/resp"
+	"github.com/shamim3696/cache-boy/internal/command"
+	"github.com/shamim3696/cache-boy/internal/persistence/snapshot"
+	"github.com/shamim3696/cache-boy/internal/protocol/resp"
 )
 
 var logger = log.Printf

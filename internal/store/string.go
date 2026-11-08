@@ -3,7 +3,7 @@ package store
 import (
 	"strconv"
 
-	"cache-boy/internal/compression"
+	"github.com/shamim3696/cache-boy/internal/compression"
 )
 
 // String is a byte string. Canonical integers are stored as an int64 and

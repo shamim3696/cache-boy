@@ -1,6 +1,6 @@
 # cache-boy-client
 
-The TypeScript/Node.js client for [cache-boy](../../README.md), a Redis-compatible in-memory data store.
+The TypeScript/Node.js client for [cache-boy](https://github.com/shamim3696/cache-boy), a Redis-compatible in-memory data store.
 
 It works as a drop-in alternative to ioredis for everyday commands. It also covers the things you normally build yourself on top of Redis: client-side caching, typed JSON, stampede-safe cache-aside, locks with fencing tokens, rate limiting, job queues, tag invalidation, and an HTTP mode for serverless and edge runtimes.
 

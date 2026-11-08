@@ -1,7 +1,7 @@
 package command
 
 import (
-	"cache-boy/internal/protocol/resp"
+	"github.com/shamim3696/cache-boy/internal/protocol/resp"
 )
 
 // Persistence commands. The work is done by e.Persist (package persistence).

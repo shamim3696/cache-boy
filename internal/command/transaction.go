@@ -1,8 +1,8 @@
 package command
 
 import (
-	"cache-boy/internal/protocol/resp"
-	"cache-boy/internal/transaction"
+	"github.com/shamim3696/cache-boy/internal/protocol/resp"
+	"github.com/shamim3696/cache-boy/internal/transaction"
 )
 
 func init() {

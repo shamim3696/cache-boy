@@ -1,7 +1,7 @@
 package command
 
 import (
-	"cache-boy/internal/protocol/resp"
+	"github.com/shamim3696/cache-boy/internal/protocol/resp"
 )
 
 // Cluster commands. Routing (MOVED/CROSSSLOT) happens in the dispatcher via

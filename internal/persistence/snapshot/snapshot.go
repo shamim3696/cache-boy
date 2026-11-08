@@ -59,13 +59,13 @@ import (
 	"path/filepath"
 	"time"
 
-	"cache-boy/internal/command"
-	"cache-boy/internal/datatype/deque"
-	"cache-boy/internal/datatype/jsondoc"
-	"cache-boy/internal/datatype/skiplist"
-	"cache-boy/internal/datatype/timeseries"
-	"cache-boy/internal/datatype/vector"
-	"cache-boy/internal/store"
+	"github.com/shamim3696/cache-boy/internal/command"
+	"github.com/shamim3696/cache-boy/internal/datatype/deque"
+	"github.com/shamim3696/cache-boy/internal/datatype/jsondoc"
+	"github.com/shamim3696/cache-boy/internal/datatype/skiplist"
+	"github.com/shamim3696/cache-boy/internal/datatype/timeseries"
+	"github.com/shamim3696/cache-boy/internal/datatype/vector"
+	"github.com/shamim3696/cache-boy/internal/store"
 )
 
 const (

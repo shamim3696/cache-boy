@@ -5,7 +5,7 @@ import (
 	"strings"
 	"time"
 
-	"cache-boy/internal/protocol/resp"
+	"github.com/shamim3696/cache-boy/internal/protocol/resp"
 )
 
 // GCRA rate limiting (feature/ratelimit). Rate-limit keys are not keyspace

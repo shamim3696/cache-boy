@@ -11,7 +11,7 @@ import (
 	"sync/atomic"
 	"time"
 
-	"cache-boy/internal/store"
+	"github.com/shamim3696/cache-boy/internal/store"
 )
 
 type flight struct {

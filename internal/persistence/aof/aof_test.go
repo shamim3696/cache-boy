@@ -9,12 +9,12 @@ import (
 	"sync"
 	"testing"
 
-	"cache-boy/internal/command"
-	"cache-boy/internal/config"
-	"cache-boy/internal/persistence/aof"
-	"cache-boy/internal/persistence/snapshot"
-	"cache-boy/internal/protocol/resp"
-	"cache-boy/internal/store"
+	"github.com/shamim3696/cache-boy/internal/command"
+	"github.com/shamim3696/cache-boy/internal/config"
+	"github.com/shamim3696/cache-boy/internal/persistence/aof"
+	"github.com/shamim3696/cache-boy/internal/persistence/snapshot"
+	"github.com/shamim3696/cache-boy/internal/protocol/resp"
+	"github.com/shamim3696/cache-boy/internal/store"
 )
 
 // Test-only write commands (the real data-type commands live elsewhere).

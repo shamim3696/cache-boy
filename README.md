@@ -19,8 +19,40 @@ A Redis-compatible in-memory data store written in Go. It speaks the Redis proto
 
 It also uses every CPU core: the keyspace is split into shards with their own locks, while Redis runs commands on a single thread.
 
+## Install
+
+**Windows** (PowerShell, no admin needed):
+```powershell
+irm https://raw.githubusercontent.com/shamim3696/cache-boy/main/scripts/install.ps1 | iex
+```
+
+**Linux / macOS**:
+```bash
+curl -fsSL https://raw.githubusercontent.com/shamim3696/cache-boy/main/scripts/install.sh | sh
+```
+
+**Docker**:
+```bash
+docker run -d -p 6380:6380 -p 6381:6381 -v cache-boy-data:/data ghcr.io/shamim3696/cache-boy
+```
+
+**Go**:
+```bash
+go install github.com/shamim3696/cache-boy/cmd/...@latest
+```
+
+Or download an archive for your platform from [Releases](https://github.com/shamim3696/cache-boy/releases). Each one holds `cache-boy`, `cache-boy-cli` and `cache-boy-bench`. Both install scripts check the SHA-256 checksum before installing; set `CACHE_BOY_VERSION=v0.1.0` to pin a version.
+
+**Node.js SDK**:
+```bash
+npm install cache-boy-client
+```
+
+Then start the server with `cache-boy` and open `http://127.0.0.1:6381` for the dashboard.
+
 ## Quick start
 
+From source:
 ```bash
 go build -o bin/ ./cmd/...
 
@@ -49,7 +81,7 @@ await cache.tags.invalidate(`user:${id}`);
 const { allowed } = await cache.rateLimit(`api:${ip}`, 100, "1m");
 ```
 
-**From Go**: `import "cache-boy/pkg/client"`. It includes helpers like `Wrap`, `Lock`, `RateLimit` and `QPush`.
+**From Go**: `import "github.com/shamim3696/cache-boy/pkg/client"`. It includes helpers like `Wrap`, `Lock`, `RateLimit` and `QPush`.
 
 **Over HTTP** (serverless, edge, any language):
 ```bash

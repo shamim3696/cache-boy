@@ -8,8 +8,8 @@ import (
 	"io"
 	"math"
 
-	"cache-boy/internal/datatype/bloom"
-	"cache-boy/internal/datatype/hll"
+	"github.com/shamim3696/cache-boy/internal/datatype/bloom"
+	"github.com/shamim3696/cache-boy/internal/datatype/hll"
 )
 
 // Low-level primitives of the snapshot format. Every integer is a varint

@@ -5,8 +5,8 @@ import (
 	"math/rand/v2"
 	"testing"
 
-	"cache-boy/internal/config"
-	"cache-boy/internal/store"
+	"github.com/shamim3696/cache-boy/internal/config"
+	"github.com/shamim3696/cache-boy/internal/store"
 )
 
 // simulate runs a read-through cache over the real DB and Evictor: GET, and

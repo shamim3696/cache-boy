@@ -10,12 +10,12 @@ import (
 	"testing"
 	"time"
 
-	"cache-boy/internal/api/apitest"
-	"cache-boy/internal/command"
-	"cache-boy/internal/config"
-	"cache-boy/internal/feature/namespace"
-	"cache-boy/internal/protocol/resp"
-	"cache-boy/internal/store"
+	"github.com/shamim3696/cache-boy/internal/api/apitest"
+	"github.com/shamim3696/cache-boy/internal/command"
+	"github.com/shamim3696/cache-boy/internal/config"
+	"github.com/shamim3696/cache-boy/internal/feature/namespace"
+	"github.com/shamim3696/cache-boy/internal/protocol/resp"
+	"github.com/shamim3696/cache-boy/internal/store"
 )
 
 func init() { apitest.Register() }

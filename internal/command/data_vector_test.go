@@ -4,7 +4,7 @@ import (
 	"math"
 	"testing"
 
-	"cache-boy/internal/protocol/resp"
+	"github.com/shamim3696/cache-boy/internal/protocol/resp"
 )
 
 func TestVectorCommands(t *testing.T) {

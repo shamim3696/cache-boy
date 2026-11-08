@@ -10,9 +10,9 @@ import (
 
 	"github.com/coder/websocket"
 
-	"cache-boy/internal/api/apitest"
-	"cache-boy/internal/command"
-	"cache-boy/internal/config"
+	"github.com/shamim3696/cache-boy/internal/api/apitest"
+	"github.com/shamim3696/cache-boy/internal/command"
+	"github.com/shamim3696/cache-boy/internal/config"
 )
 
 func init() { apitest.Register() }

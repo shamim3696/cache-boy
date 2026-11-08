@@ -1,5 +1,5 @@
 package command
 
-import "cache-boy/internal/store"
+import "github.com/shamim3696/cache-boy/internal/store"
 
 type storeEntry = store.Entry

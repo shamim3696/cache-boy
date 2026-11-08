@@ -1,6 +1,6 @@
 package eviction
 
-import "cache-boy/internal/store"
+import "github.com/shamim3696/cache-boy/internal/store"
 
 const poolSize = 16
 

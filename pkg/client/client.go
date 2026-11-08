@@ -18,7 +18,7 @@ import (
 	"sync"
 	"time"
 
-	"cache-boy/internal/protocol/resp"
+	"github.com/shamim3696/cache-boy/internal/protocol/resp"
 )
 
 // Value is a RESP reply. Use v.Type, v.Str, v.Int, v.Float, v.Bool, v.Elems,

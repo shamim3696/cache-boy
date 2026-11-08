@@ -1,0 +1,63 @@
+# Builds release archives for every platform and attaches them to the GitHub
+# release. Run by .github/workflows/release.yml when a v* tag is pushed.
+# Try it locally: goreleaser release --snapshot --clean   (output in dist/)
+version: 2
+
+project_name: cache-boy
+
+before:
+  hooks:
+    - go mod tidy
+
+builds:
+  - id: cache-boy
+    main: ./cmd/cache-boy
+    binary: cache-boy
+    env: [CGO_ENABLED=0]
+    flags: [-trimpath]
+    ldflags:
+      - -s -w -X github.com/shamim3696/cache-boy/internal/command.Version={{.Version}}
+    goos: [linux, darwin, windows]
+    goarch: [amd64, arm64]
+
+  - id: cache-boy-cli
+    main: ./cmd/cache-boy-cli
+    binary: cache-boy-cli
+    env: [CGO_ENABLED=0]
+    flags: [-trimpath]
+    ldflags: [-s -w]
+    goos: [linux, darwin, windows]
+    goarch: [amd64, arm64]
+
+  - id: cache-boy-bench
+    main: ./cmd/cache-boy-bench
+    binary: cache-boy-bench
+    env: [CGO_ENABLED=0]
+    flags: [-trimpath]
+    ldflags: [-s -w]
+    goos: [linux, darwin, windows]
+    goarch: [amd64, arm64]
+
+archives:
+  # No version in the name, so .../releases/latest/download/<name> always
+  # points at the newest build. scripts/install.sh and install.ps1 rely on it.
+  - name_template: "{{ .ProjectName }}_{{ .Os }}_{{ .Arch }}"
+    formats: [tar.gz]
+    format_overrides:
+      - goos: windows
+        formats: [zip]
+    files:
+      - README.md
+      - LICENSE
+      - configs/cache-boy.conf
+
+checksum:
+  name_template: checksums.txt
+
+changelog:
+  sort: asc
+  filters:
+    exclude:
+      - "^docs:"
+      - "^test:"
+      - "^Merge "

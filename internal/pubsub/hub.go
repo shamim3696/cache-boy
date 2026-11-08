@@ -6,7 +6,7 @@ import (
 	"sync"
 	"sync/atomic"
 
-	"cache-boy/internal/protocol/resp"
+	"github.com/shamim3696/cache-boy/internal/protocol/resp"
 )
 
 // Subscriber receives messages. Push must not block.

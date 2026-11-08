@@ -3,8 +3,8 @@ package command
 import (
 	"strings"
 
-	"cache-boy/internal/auth"
-	"cache-boy/internal/protocol/resp"
+	"github.com/shamim3696/cache-boy/internal/auth"
+	"github.com/shamim3696/cache-boy/internal/protocol/resp"
 )
 
 func init() {

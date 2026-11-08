@@ -12,7 +12,7 @@ import (
 	"strings"
 	"sync/atomic"
 
-	"cache-boy/internal/protocol/resp"
+	"github.com/shamim3696/cache-boy/internal/protocol/resp"
 )
 
 type Flag uint32

@@ -4,7 +4,7 @@ import (
 	"strconv"
 	"strings"
 
-	"cache-boy/internal/protocol/resp"
+	"github.com/shamim3696/cache-boy/internal/protocol/resp"
 )
 
 // formatReply renders a reply like redis-cli does on a terminal.

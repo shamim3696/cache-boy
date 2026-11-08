@@ -13,8 +13,8 @@ import (
 	"sync"
 	"time"
 
-	"cache-boy/internal/config"
-	"cache-boy/internal/store"
+	"github.com/shamim3696/cache-boy/internal/config"
+	"github.com/shamim3696/cache-boy/internal/store"
 )
 
 // Version is one recorded value of a key. Deleted versions have a nil Value.

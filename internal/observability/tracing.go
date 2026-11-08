@@ -7,7 +7,7 @@ import (
 	"sync"
 	"time"
 
-	"cache-boy/internal/protocol/resp"
+	"github.com/shamim3696/cache-boy/internal/protocol/resp"
 )
 
 // Subscriber receives MONITOR lines. Push must not block.

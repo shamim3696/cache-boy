@@ -3,7 +3,7 @@ package eviction
 import (
 	"time"
 
-	"cache-boy/internal/store"
+	"github.com/shamim3696/cache-boy/internal/store"
 )
 
 // lruBetter prefers the key idle the longest.

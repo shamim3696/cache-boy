@@ -10,7 +10,7 @@ import (
 	"sync"
 	"time"
 
-	"cache-boy/internal/command"
+	"github.com/shamim3696/cache-boy/internal/command"
 )
 
 type Server struct {

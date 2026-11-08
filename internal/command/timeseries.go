@@ -5,9 +5,9 @@ import (
 	"sort"
 	"strconv"
 
-	"cache-boy/internal/datatype/timeseries"
-	"cache-boy/internal/protocol/resp"
-	"cache-boy/internal/store"
+	"github.com/shamim3696/cache-boy/internal/datatype/timeseries"
+	"github.com/shamim3696/cache-boy/internal/protocol/resp"
+	"github.com/shamim3696/cache-boy/internal/store"
 )
 
 func init() {

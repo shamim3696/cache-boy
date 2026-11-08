@@ -9,9 +9,9 @@ import (
 	"testing"
 	"time"
 
-	"cache-boy/internal/feature/watch"
-	"cache-boy/internal/protocol/resp"
-	"cache-boy/internal/store"
+	"github.com/shamim3696/cache-boy/internal/feature/watch"
+	"github.com/shamim3696/cache-boy/internal/protocol/resp"
+	"github.com/shamim3696/cache-boy/internal/store"
 )
 
 func TestFeatureKeyWatch(t *testing.T) {

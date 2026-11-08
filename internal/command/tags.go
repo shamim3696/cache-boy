@@ -1,7 +1,7 @@
 package command
 
 import (
-	"cache-boy/internal/protocol/resp"
+	"github.com/shamim3696/cache-boy/internal/protocol/resp"
 )
 
 // Tag-based invalidation. The index lives in Engine.Tags (feature/tags) and

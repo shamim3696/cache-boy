@@ -4,7 +4,7 @@ import (
 	"strings"
 	"testing"
 
-	"cache-boy/internal/store"
+	"github.com/shamim3696/cache-boy/internal/store"
 )
 
 func TestSlots(t *testing.T) {

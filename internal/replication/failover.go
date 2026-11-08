@@ -8,8 +8,8 @@ import (
 	"strings"
 	"time"
 
-	"cache-boy/internal/command"
-	"cache-boy/internal/consensus/raft"
+	"github.com/shamim3696/cache-boy/internal/command"
+	"github.com/shamim3696/cache-boy/internal/consensus/raft"
 )
 
 // Automatic failover: Raft elects one leader among the nodes; the elected

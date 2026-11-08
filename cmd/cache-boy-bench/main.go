@@ -18,7 +18,7 @@ import (
 	"sync/atomic"
 	"time"
 
-	"cache-boy/internal/protocol/resp"
+	"github.com/shamim3696/cache-boy/internal/protocol/resp"
 )
 
 type config struct {

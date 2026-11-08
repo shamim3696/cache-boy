@@ -25,9 +25,9 @@ import (
 
 	"github.com/coder/websocket"
 
-	"cache-boy/internal/api/apiutil"
-	"cache-boy/internal/command"
-	"cache-boy/internal/protocol/resp"
+	"github.com/shamim3696/cache-boy/internal/api/apiutil"
+	"github.com/shamim3696/cache-boy/internal/command"
+	"github.com/shamim3696/cache-boy/internal/protocol/resp"
 )
 
 // NamespaceHeader / ?namespace= select the connection's initial namespace.

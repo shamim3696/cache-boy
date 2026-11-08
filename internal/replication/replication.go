@@ -34,8 +34,8 @@ import (
 	"sync/atomic"
 	"time"
 
-	"cache-boy/internal/command"
-	"cache-boy/internal/protocol/resp"
+	"github.com/shamim3696/cache-boy/internal/command"
+	"github.com/shamim3696/cache-boy/internal/protocol/resp"
 )
 
 // Manager implements command.Replicator. It is both sides at once: it can

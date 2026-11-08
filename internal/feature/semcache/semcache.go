@@ -16,7 +16,7 @@ import (
 	"strconv"
 	"sync"
 
-	"cache-boy/internal/datatype/vector"
+	"github.com/shamim3696/cache-boy/internal/datatype/vector"
 )
 
 const (

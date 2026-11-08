@@ -28,11 +28,11 @@ import (
 	"sync/atomic"
 	"time"
 
-	"cache-boy/internal/feature/namespace"
-	"cache-boy/internal/glob"
-	"cache-boy/internal/protocol/resp"
-	"cache-boy/internal/pubsub"
-	"cache-boy/internal/store"
+	"github.com/shamim3696/cache-boy/internal/feature/namespace"
+	"github.com/shamim3696/cache-boy/internal/glob"
+	"github.com/shamim3696/cache-boy/internal/protocol/resp"
+	"github.com/shamim3696/cache-boy/internal/pubsub"
+	"github.com/shamim3696/cache-boy/internal/store"
 )
 
 // Subscriber receives key events. Push must not block.

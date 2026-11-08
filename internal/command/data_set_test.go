@@ -4,7 +4,7 @@ import (
 	"strings"
 	"testing"
 
-	"cache-boy/internal/protocol/resp"
+	"github.com/shamim3696/cache-boy/internal/protocol/resp"
 )
 
 func TestSetCommands(t *testing.T) {

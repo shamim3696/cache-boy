@@ -6,8 +6,8 @@ package expiry
 import (
 	"time"
 
-	"cache-boy/internal/config"
-	"cache-boy/internal/store"
+	"github.com/shamim3696/cache-boy/internal/config"
+	"github.com/shamim3696/cache-boy/internal/store"
 )
 
 // budgetPerShard caps the wheel entries checked per shard per sweep, so a

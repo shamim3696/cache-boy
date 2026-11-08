@@ -5,7 +5,7 @@ import (
 	"sync"
 	"testing"
 
-	"cache-boy/internal/protocol/resp"
+	"github.com/shamim3696/cache-boy/internal/protocol/resp"
 )
 
 // render turns a reply into a compact string for table tests:

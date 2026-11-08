@@ -15,18 +15,28 @@ import (
 	"syscall"
 	"time"
 
-	"cache-boy/internal/api/httpapi"
-	"cache-boy/internal/cluster"
-	"cache-boy/internal/command"
-	"cache-boy/internal/config"
-	"cache-boy/internal/persistence"
-	"cache-boy/internal/replication"
-	"cache-boy/internal/server"
+	"github.com/shamim3696/cache-boy/internal/api/httpapi"
+	"github.com/shamim3696/cache-boy/internal/cluster"
+	"github.com/shamim3696/cache-boy/internal/command"
+	"github.com/shamim3696/cache-boy/internal/config"
+	"github.com/shamim3696/cache-boy/internal/persistence"
+	"github.com/shamim3696/cache-boy/internal/replication"
+	"github.com/shamim3696/cache-boy/internal/server"
 )
 
 func main() {
 	cfg := config.Default()
 	args := os.Args[1:]
+	if len(args) == 1 {
+		switch args[0] {
+		case "-v", "--version", "version":
+			fmt.Printf("cache-boy %s (redis protocol %s)\n", command.Version, command.RedisVersion)
+			return
+		case "-h", "--help", "help":
+			fmt.Print(usage)
+			return
+		}
+	}
 	if len(args) > 0 && args[0] != "" && args[0][0] != '-' {
 		if err := cfg.Load(args[0]); err != nil {
 			log.Fatalf("config: %v", err)
@@ -112,3 +122,13 @@ func main() {
 		log.Fatal(err)
 	}
 }
+
+const usage = `Usage: cache-boy [config-file] [--option value ...]
+
+  cache-boy                                  listen on 127.0.0.1:6380, dashboard on :6381
+  cache-boy cache-boy.conf                   load a config file
+  cache-boy --port 7000 --maxmemory 256mb    any config file option works as a flag
+  cache-boy --version
+
+Every option is documented in configs/cache-boy.conf.
+`

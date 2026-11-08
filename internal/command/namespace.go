@@ -4,8 +4,8 @@ import (
 	"sort"
 	"strings"
 
-	"cache-boy/internal/feature/namespace"
-	"cache-boy/internal/protocol/resp"
+	"github.com/shamim3696/cache-boy/internal/feature/namespace"
+	"github.com/shamim3696/cache-boy/internal/protocol/resp"
 )
 
 func init() {

@@ -14,10 +14,10 @@ import (
 	"strings"
 	"unicode/utf8"
 
-	"cache-boy/internal/auth"
-	"cache-boy/internal/command"
-	"cache-boy/internal/feature/namespace"
-	"cache-boy/internal/protocol/resp"
+	"github.com/shamim3696/cache-boy/internal/auth"
+	"github.com/shamim3696/cache-boy/internal/command"
+	"github.com/shamim3696/cache-boy/internal/feature/namespace"
+	"github.com/shamim3696/cache-boy/internal/protocol/resp"
 )
 
 // MaxBody is the largest request body / WebSocket message accepted (16 MB).

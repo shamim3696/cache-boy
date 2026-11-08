@@ -4,8 +4,8 @@ import (
 	"math"
 	"strconv"
 
-	"cache-boy/internal/protocol/resp"
-	"cache-boy/internal/store"
+	"github.com/shamim3696/cache-boy/internal/protocol/resp"
+	"github.com/shamim3696/cache-boy/internal/store"
 )
 
 const maxStringLen = 512 << 20 // Redis' proto-max-bulk-len default

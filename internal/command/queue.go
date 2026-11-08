@@ -4,8 +4,8 @@ import (
 	"strconv"
 	"time"
 
-	"cache-boy/internal/feature/queue"
-	"cache-boy/internal/protocol/resp"
+	"github.com/shamim3696/cache-boy/internal/feature/queue"
+	"github.com/shamim3696/cache-boy/internal/protocol/resp"
 )
 
 // Job queues (feature/queue).

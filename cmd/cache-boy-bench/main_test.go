@@ -3,10 +3,10 @@ package main
 import (
 	"testing"
 
-	"cache-boy/internal/api/apitest"
-	"cache-boy/internal/command"
-	cbconfig "cache-boy/internal/config"
-	"cache-boy/internal/server"
+	"github.com/shamim3696/cache-boy/internal/api/apitest"
+	"github.com/shamim3696/cache-boy/internal/command"
+	cbconfig "github.com/shamim3696/cache-boy/internal/config"
+	"github.com/shamim3696/cache-boy/internal/server"
 )
 
 func TestRunTest(t *testing.T) {

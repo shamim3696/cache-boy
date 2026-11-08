@@ -1,0 +1,13 @@
+.git
+.github
+.claude
+bin
+dist
+**/node_modules
+**/dist-test
+sdk
+test/compat
+*.aof
+*.cbdump
+*.log
+*.exe

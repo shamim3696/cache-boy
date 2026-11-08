@@ -13,7 +13,7 @@ import (
 	"sync"
 	"sync/atomic"
 
-	"cache-boy/internal/glob"
+	"github.com/shamim3696/cache-boy/internal/glob"
 )
 
 // SaveRule triggers a snapshot after Seconds if at least Changes writes happened.

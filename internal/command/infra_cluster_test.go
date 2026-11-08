@@ -4,8 +4,8 @@ import (
 	"strings"
 	"testing"
 
-	"cache-boy/internal/cluster"
-	"cache-boy/internal/config"
+	"github.com/shamim3696/cache-boy/internal/cluster"
+	"github.com/shamim3696/cache-boy/internal/config"
 )
 
 func TestClusterCommands(t *testing.T) {

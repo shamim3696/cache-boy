@@ -1,0 +1,62 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+permissions:
+  contents: read
+
+jobs:
+  go:
+    name: Go tests (${{ matrix.os }})
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, windows-latest, macos-latest]
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: go.mod
+      - run: go vet ./...
+      - name: Test with the race detector
+        if: runner.os == 'Linux'
+        run: go test -race ./...
+      - name: Test
+        if: runner.os != 'Linux'
+        run: go test ./...
+
+  sdk:
+    name: TypeScript SDK
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: sdk/typescript
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: sdk/typescript/package-lock.json
+      - run: npm ci
+      - run: npm test
+
+  docker:
+    name: Docker image builds
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - run: docker build -f deployments/docker/Dockerfile -t cache-boy:ci .
+      - name: Smoke test
+        run: |
+          docker run -d --name cb -p 6380:6380 cache-boy:ci
+          for i in $(seq 1 20); do
+            docker exec cb cache-boy-cli PING && exit 0
+            sleep 1
+          done
+          docker logs cb
+          exit 1

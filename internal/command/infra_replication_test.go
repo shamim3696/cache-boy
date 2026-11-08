@@ -7,9 +7,9 @@ import (
 	"testing"
 	"time"
 
-	"cache-boy/internal/command"
-	"cache-boy/internal/replication"
-	"cache-boy/internal/server"
+	"github.com/shamim3696/cache-boy/internal/command"
+	"github.com/shamim3696/cache-boy/internal/replication"
+	"github.com/shamim3696/cache-boy/internal/server"
 )
 
 var fastRepl = replication.Options{

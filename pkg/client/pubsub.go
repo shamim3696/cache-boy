@@ -5,7 +5,7 @@ import (
 	"strings"
 	"sync"
 
-	"cache-boy/internal/protocol/resp"
+	"github.com/shamim3696/cache-boy/internal/protocol/resp"
 )
 
 // Message is one push received by a Subscription.
