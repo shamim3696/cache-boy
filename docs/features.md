@@ -170,7 +170,7 @@ Samples are stored in chunks of 256. The newest chunk is a plain array, and olde
 | `VDEL key id` | integer 1/0 |
 | `VCARD key` / `VDIM key` | integer |
 
-`FILTER attr=value` keeps vectors whose ATTR JSON has that top-level field with that string or number value. Search is exact (brute force), which is fast enough for about 100k vectors per key.
+`FILTER attr=value` keeps vectors whose ATTR JSON has that top-level field with that string or number value. Below 1000 vectors the search is exact. Larger sets are indexed with HNSW, built incrementally as vectors are added, and answered approximately (about 0.3 ms per query at 100k vectors). When a filter leaves fewer than K matches in the graph, the search falls back to an exact scan.
 
 ## Client-side caching
 

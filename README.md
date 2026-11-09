@@ -50,6 +50,8 @@ npm install cache-boy-client
 
 Then start the server with `cache-boy` and open `http://127.0.0.1:6381` for the dashboard.
 
+**New here? Read the [user guide](docs/guide.md).** It covers setup, every way to connect, each feature with examples, security, deployment and troubleshooting.
+
 ## Quick start
 
 From source:
