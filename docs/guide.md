@@ -64,7 +64,7 @@ Open PowerShell (no admin rights needed) and run:
 irm https://raw.githubusercontent.com/shamim3696/cache-boy/main/scripts/install.ps1 | iex
 ```
 
-This downloads the latest release, checks its SHA-256 checksum, installs `cache-boy.exe`, `cache-boy-cli.exe` and `cache-boy-bench.exe` to `%LOCALAPPDATA%\cache-boy\bin`, and adds that folder to your user PATH. Open a new terminal afterwards.
+This downloads the latest release, checks its SHA-256 checksum, installs `cache-boy.exe`, `cache-boy-cli.exe`, `cache-boy-bench.exe` and `cache-boy-sync.exe` to `%LOCALAPPDATA%\cache-boy\bin`, and adds that folder to your user PATH. Open a new terminal afterwards.
 
 ### Linux and macOS
 
@@ -432,6 +432,29 @@ cb.cacheStats();                // { hits, misses, size, invalidations }
 ```
 
 Use it for data that is read far more often than it changes: configuration, feature flags, product details, user profiles.
+
+### Automatic invalidation from PostgreSQL
+
+Instead of deleting cache keys in your code after every write, let the database tell the cache. `cache-boy-sync` reads Postgres's change stream and invalidates tags whenever rows change, including changes made by other services, admin tools or plain SQL:
+
+```yaml
+# cache-boy-sync.yaml
+postgres:
+  url: postgres://cache_sync:${PG_PASSWORD}@db:5432/shop
+cache:
+  addr: 127.0.0.1:6380
+rules:
+  - table: users
+    tags: ["user:{id}", "users:list"]
+  - table: orders
+    tags: ["user:{user_id}", "order:{id}"]
+```
+
+```bash
+cache-boy-sync -config cache-boy-sync.yaml
+```
+
+Now `UPDATE users SET name = 'Karim' WHERE id = 42` invalidates every entry tagged `user:42`, a few milliseconds after the commit, with no cache code in the app. It needs `wal_level = logical` in Postgres. Setup, rules, production advice and limits: [db-sync.md](db-sync.md).
 
 ### Keeping old versions
 

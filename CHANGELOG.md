@@ -1,6 +1,11 @@
 # Changelog
 
-## [0.1.0] - Unreleased
+## [0.2.0] - 2026-11-09
+### Added
+- `cache-boy-sync`: automatic cache invalidation from PostgreSQL. It streams committed changes over logical replication (pgoutput) and, per configured rule, invalidates tags (`TAG.INVALIDATE`) and deletes keys built from the changed rows (`user:{id}`). Old and new rows both count on updates; delivery is at least once through a replication slot, so changes made while it or cache-boy is down are not lost. Includes `-dry-run`, `-uninstall` and replica-identity warnings. See docs/db-sync.md.
+- Install scripts and release archives include `cache-boy-sync` and an example `configs/cache-boy-sync.yaml`.
+
+## [0.1.0] - 2026-11-08
 ### Distribution
 - Go module path is now `github.com/shamim3696/cache-boy`, so `go install github.com/shamim3696/cache-boy/cmd/...@latest` works
 - Release pipeline: pushing a `v*` tag builds Linux/macOS/Windows (amd64 + arm64) archives with GoReleaser, a multi-arch image on ghcr.io and publishes `cache-boy-client` to npm (see docs/releasing.md)
