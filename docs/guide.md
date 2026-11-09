@@ -11,24 +11,25 @@ This guide takes you from installing cache-boy to running it in production. It c
 1. [What cache-boy is](#1-what-cache-boy-is)
 2. [Install](#2-install)
 3. [Run the server](#3-run-the-server)
-4. [Connect](#4-connect)
-5. [Caching patterns](#5-caching-patterns)
-6. [Rate limiting](#6-rate-limiting)
-7. [Distributed locks](#7-distributed-locks)
-8. [Job queues](#8-job-queues)
-9. [Reacting to changes: pub/sub, key watch, webhooks](#9-reacting-to-changes)
-10. [AI apps: semantic cache and vector search](#10-ai-apps-semantic-cache-and-vector-search)
-11. [Data types](#11-data-types)
-12. [Multi-tenancy with namespaces](#12-multi-tenancy-with-namespaces)
-13. [Server-side JavaScript](#13-server-side-javascript)
-14. [Persistence](#14-persistence)
-15. [Memory limits and eviction](#15-memory-limits-and-eviction)
-16. [Security](#16-security)
-17. [Replication, failover and cluster](#17-replication-failover-and-cluster)
-18. [Monitoring](#18-monitoring)
-19. [Deploying](#19-deploying)
-20. [Migrating from Redis and ioredis](#20-migrating-from-redis-and-ioredis)
-21. [Troubleshooting](#21-troubleshooting)
+4. [The dashboard (web UI)](#4-the-dashboard-web-ui)
+5. [Connect](#5-connect)
+6. [Caching patterns](#6-caching-patterns)
+7. [Rate limiting](#7-rate-limiting)
+8. [Distributed locks](#8-distributed-locks)
+9. [Job queues](#9-job-queues)
+10. [Reacting to changes: pub/sub, key watch, webhooks](#10-reacting-to-changes)
+11. [AI apps: semantic cache and vector search](#11-ai-apps-semantic-cache-and-vector-search)
+12. [Data types](#12-data-types)
+13. [Multi-tenancy with namespaces](#13-multi-tenancy-with-namespaces)
+14. [Server-side JavaScript](#14-server-side-javascript)
+15. [Persistence](#15-persistence)
+16. [Memory limits and eviction](#16-memory-limits-and-eviction)
+17. [Security](#17-security)
+18. [Replication, failover and cluster](#18-replication-failover-and-cluster)
+19. [Monitoring](#19-monitoring)
+20. [Deploying](#20-deploying)
+21. [Migrating from Redis and ioredis](#21-migrating-from-redis-and-ioredis)
+22. [Troubleshooting](#22-troubleshooting)
 
 ---
 
@@ -172,7 +173,7 @@ Most options can also be changed at runtime with `CONFIG SET`. The common ones:
 | `maxclients` | `10000` | Connection limit |
 | `timeout` | `0` | Close idle clients after N seconds (0 = never) |
 | `maxmemory` | none | Memory limit, e.g. `512mb`, `2gb` |
-| `maxmemory-policy` | `noeviction` | What to delete when full (see [section 15](#15-memory-limits-and-eviction)) |
+| `maxmemory-policy` | `noeviction` | What to delete when full (see [section 16](#16-memory-limits-and-eviction)) |
 | `dir` | `.` | Where snapshot and AOF files go |
 | `save` | `3600 1 300 100 60 10000` | Snapshot rules: after N seconds if at least M writes |
 | `appendonly` | `no` | Log every write for durability |
@@ -185,7 +186,73 @@ The full annotated file is [configs/cache-boy.conf](../configs/cache-boy.conf). 
 
 ---
 
-## 4. Connect
+## 4. The dashboard (web UI)
+
+cache-boy has a built-in web dashboard, with nothing extra to install. While the server is running, open this address in any browser:
+
+```
+http://127.0.0.1:6381
+```
+
+If you started the server with `--http-port 8080`, use `http://127.0.0.1:8080` instead. On another machine or in Docker, use that host's address and the published port.
+
+If the server has a password (`requirepass`), the dashboard first shows **Authentication required**. Enter the password, or `user:password` for an ACL user, and click **Sign in**. You stay signed in until you close the browser tab.
+
+The dot in the header shows whether the dashboard can reach the server. The **namespace** box next to it switches every tab to one tenant's keys (see [Multi-tenancy](#13-multi-tenancy-with-namespaces)). Leave it empty for the default namespace.
+
+The dashboard has seven tabs:
+
+### Overview
+
+The server's health at a glance. It refreshes every 2 seconds.
+
+| Card | Shows |
+|---|---|
+| Version | cache-boy version and the Redis version it reports to clients |
+| Uptime | How long the server has been running |
+| Ops/sec | Commands per second, with a live sparkline chart |
+| Memory | Memory used, a bar against `maxmemory` (if set), and a sparkline |
+| Keys | Number of keys, plus how many have expired or been evicted |
+| Hit rate | Share of reads that found their key: a quick check that your cache is working |
+| Clients | Connected clients |
+
+Below the cards, a table lists the main server details from `INFO`: role (leader or replica), persistence state, eviction policy and so on.
+
+### Keys
+
+Browse and inspect what's stored.
+
+- **Search** with a pattern (`user:*`, `session:*`, `*`), optionally filtered by **type** (string, hash, list, set, zset, json, ...), then click **Load more** for the next page. It uses `SCAN`, so it's safe on a large production keyspace.
+- **Click a key** to see its value (JSON is pretty-printed; hashes, lists and sets are shown as structures), its type, its remaining TTL and its size.
+- **Reload** re-reads the value. **Delete** removes the key after asking for confirmation.
+
+### Console
+
+Run any command from the browser, like `cache-boy-cli`: `SET greeting hello`, `TAG.KEYS user:1`, `RATELIMIT.PEEK api:42 100 1m`, `INFO memory`. Results are shown formatted. Press ↑/↓ to go through earlier commands; history is kept in your browser.
+
+### Events
+
+A live feed of key changes. Enter a key pattern (default `*`), click **Start**, and every matching `set`, `del`, `expired`, `evicted` and so on appears as it happens, with the time and the key. This is the easiest way to watch what your app is actually doing to the cache. **Clear** empties the list; click **Stop** when you're done, since a busy server produces a lot of events.
+
+### Slowlog
+
+Commands that took longer than `slowlog-log-slower-than` (10 ms by default), with the time, how long each took, the full command and the client that sent it. Look here first when the app feels slow.
+
+### Clients
+
+Every open connection: id, address, kind (normal, pub/sub, replica...), client name, ACL user, namespace and the last command it ran. Use it to find which service is connected, or which one is sending unexpected traffic. Name your connections (`clientName` in the SDK, `CLIENT SETNAME` elsewhere) so they're easy to spot.
+
+### Commands
+
+Statistics for every command the server has run: how many times it was called, total time and average time per call. It shows which commands dominate your workload and which ones are expensive.
+
+### Keep the dashboard private
+
+The dashboard can read and delete any key, so treat port 6381 like the database port: set `requirepass`, keep `bind` on a private address, and put a TLS reverse proxy in front if you open it beyond your network. To turn the dashboard and HTTP API off completely, run with `--http-port 0`.
+
+---
+
+## 5. Connect
 
 ### Node.js / TypeScript: cache-boy-client (recommended)
 
@@ -291,7 +358,7 @@ Replies come back as `{"id": 1, "result": ...}` or `{"id": 1, "error": "..."}`. 
 
 ---
 
-## 5. Caching patterns
+## 6. Caching patterns
 
 ### Cache-aside with stampede protection: `wrap()`
 
@@ -380,7 +447,7 @@ SDK: `cb.history(key)`, `cb.getVersion(key, n)`, `cb.restoreVersion(key, n)`.
 
 ---
 
-## 6. Rate limiting
+## 7. Rate limiting
 
 cache-boy uses GCRA, the algorithm behind many API gateways. It gives a smooth rate with bursts up to the limit and uses constant memory per key.
 
@@ -412,7 +479,7 @@ Raw command: `RATELIMIT key limit period [COST n]` → `[allowed, remaining, ret
 
 ---
 
-## 7. Distributed locks
+## 8. Distributed locks
 
 Use a lock when only one process at a time may do something: charge a card, run a nightly report, migrate a record.
 
@@ -441,7 +508,7 @@ try {
 
 ---
 
-## 8. Job queues
+## 9. Job queues
 
 Queues support delayed jobs, retries with backoff, a visibility timeout (a job whose worker crashes goes back to the queue) and a dead-letter list.
 
@@ -489,7 +556,7 @@ Producers and workers can be in different languages; the commands are `QPUSH`, `
 
 ---
 
-## 9. Reacting to changes
+## 10. Reacting to changes
 
 ### Pub/sub
 
@@ -523,7 +590,7 @@ Each change is sent as `{"key": "...", "op": "...", "ts": ...}`. With `SECRET`, 
 
 ---
 
-## 10. AI apps: semantic cache and vector search
+## 11. AI apps: semantic cache and vector search
 
 ### Semantic cache
 
@@ -564,7 +631,7 @@ Small sets are searched exactly. Larger ones use an HNSW index (about 0.3 ms per
 
 ---
 
-## 11. Data types
+## 12. Data types
 
 All the Redis types work as in Redis: strings, hashes, lists, sets, sorted sets, plus expiry, `SCAN`, `MULTI/EXEC/WATCH` and blocking pops. Small hashes and sets are stored in compact encodings automatically.
 
@@ -606,7 +673,7 @@ Command syntax for all of these is in [features.md](features.md).
 
 ---
 
-## 12. Multi-tenancy with namespaces
+## 13. Multi-tenancy with namespaces
 
 Give each tenant (customer, app, environment) its own isolated keyspace on one server:
 
@@ -622,7 +689,7 @@ Over the protocol: `NAMESPACE USE acme` on a connection. Over HTTP: the `X-Cache
 
 ---
 
-## 13. Server-side JavaScript
+## 14. Server-side JavaScript
 
 Run several commands atomically on the server, in JavaScript instead of Lua:
 
@@ -640,7 +707,7 @@ Inside a script you have `KEYS`, `ARGV`, `cb.call()` (throws on error), `cb.pcal
 
 ---
 
-## 14. Persistence
+## 15. Persistence
 
 By default data is kept in memory and snapshotted to `dump.cbdump` in `dir` according to the `save` rules. Choose what fits your data:
 
@@ -659,7 +726,7 @@ Commands: `SAVE` / `BGSAVE` take a snapshot now, `BGREWRITEAOF` compacts the AOF
 
 ---
 
-## 15. Memory limits and eviction
+## 16. Memory limits and eviction
 
 Set a limit and a policy so the server deletes old data instead of growing without bound:
 
@@ -681,7 +748,7 @@ Check memory with `INFO memory`, `MEMORY USAGE key`, or the dashboard. `CONFIG S
 
 ---
 
-## 16. Security
+## 17. Security
 
 The default config listens on `127.0.0.1` only. Before exposing the server on a network:
 
@@ -698,7 +765,7 @@ The default config listens on `127.0.0.1` only. Before exposing the server on a 
 
 ---
 
-## 17. Replication, failover and cluster
+## 18. Replication, failover and cluster
 
 ### Replicas
 
@@ -745,9 +812,9 @@ Commands touching several keys need the keys on one node. Use a hashtag: `{user:
 
 ---
 
-## 18. Monitoring
+## 19. Monitoring
 
-- **Dashboard:** http://host:6381 shows keys and their values, memory, clients, throughput and the slow log, live.
+- **Dashboard:** http://host:6381 shows keys and their values, memory, clients, throughput, live key events and the slow log. See [The dashboard](#4-the-dashboard-web-ui) for a tour.
 - **Prometheus:** scrape `http://host:6381/metrics`.
 - **Health check:** `GET /health` returns 200 when the server is up. Use it for load balancers and Kubernetes probes.
 - **Commands:** `INFO` (all stats), `SLOWLOG GET 10`, `CLIENT LIST`, `MONITOR` (every command live; debugging only), `DBSIZE`, `MEMORY USAGE key`, `OBJECT ENCODING key`.
@@ -755,7 +822,7 @@ Commands touching several keys need the keys on one node. Use a hashtag: `{user:
 
 ---
 
-## 19. Deploying
+## 20. Deploying
 
 ### Docker Compose
 
@@ -810,13 +877,13 @@ Run it in the background with the Task Scheduler ("At startup", program `cache-b
 - [ ] `requirepass` set, and an ACL user per application
 - [ ] `bind` to a private address; firewall in front of 6380 and 6381
 - [ ] `maxmemory` below the machine's RAM (leave room for the OS), with an eviction policy
-- [ ] Persistence chosen deliberately (section 14) and `dir` on a persistent disk
+- [ ] Persistence chosen deliberately (section 15) and `dir` on a persistent disk
 - [ ] Prometheus scraping `/metrics`, alerts on memory and evictions
 - [ ] A replica, or three nodes with Raft, if downtime matters
 
 ---
 
-## 20. Migrating from Redis and ioredis
+## 21. Migrating from Redis and ioredis
 
 1. Start cache-boy next to Redis (it uses port 6380 by default).
 2. Point your app at it. With ioredis, change only the port: `new Redis(6380)`. The ioredis compatibility suite passes against cache-boy.
@@ -833,7 +900,7 @@ Run it in the background with the Task Scheduler ("At startup", program `cache-b
 
 ---
 
-## 21. Troubleshooting
+## 22. Troubleshooting
 
 | Symptom | Cause and fix |
 |---|---|
