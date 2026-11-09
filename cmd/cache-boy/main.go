@@ -4,6 +4,8 @@
 package main
 
 import (
+	"context"
+	"errors"
 	"fmt"
 	"log"
 	"net"
@@ -19,6 +21,7 @@ import (
 	"github.com/shamim3696/cache-boy/internal/cluster"
 	"github.com/shamim3696/cache-boy/internal/command"
 	"github.com/shamim3696/cache-boy/internal/config"
+	"github.com/shamim3696/cache-boy/internal/dbsync"
 	"github.com/shamim3696/cache-boy/internal/persistence"
 	"github.com/shamim3696/cache-boy/internal/replication"
 	"github.com/shamim3696/cache-boy/internal/server"
@@ -88,9 +91,12 @@ func main() {
 		fmt.Printf("HTTP API and dashboard on http://%s/\n", httpAddr)
 	}
 
+	stopSync := startDBSync(e, cfg)
+
 	var once sync.Once
 	shutdown := func(save bool) error {
 		once.Do(func() {
+			stopSync()
 			if hs != nil {
 				hs.Close() // Close, not Shutdown: ends WebSockets and blocked requests now
 			}
@@ -132,3 +138,77 @@ const usage = `Usage: cache-boy [config-file] [--option value ...]
 
 Every option is documented in configs/cache-boy.conf.
 `
+
+// startDBSync runs automatic invalidation from databases when cache-boy.conf
+// has `db-sync <file>` and that file says auto_invalidate: true. It returns a
+// function that stops it.
+func startDBSync(e *command.Engine, cfg *config.Config) (stop func()) {
+	stop = func() {}
+	if cfg.DBSync == "" {
+		return stop
+	}
+	logger := log.New(os.Stderr, "db-sync: ", log.LstdFlags)
+	sc, err := dbsync.Load(cfg.DBSync)
+	if err != nil {
+		log.Fatalf("db-sync: %v", err)
+	}
+	if cfg.ReplicaOf != "" {
+		logger.Print("this server is a replica; db-sync runs on the leader and replicas receive its invalidations")
+		return stop
+	}
+	s, err := dbsync.New(sc, &engineInvalidator{e: e, ns: sc.Cache.Namespace}, dbsync.Options{Log: logger, StateDir: cfg.Dir})
+	if errors.Is(err, dbsync.ErrDisabled) {
+		logger.Print(err)
+		return stop
+	}
+	if err != nil {
+		log.Fatalf("db-sync: %v", err)
+	}
+	ctx, cancel := context.WithCancel(context.Background())
+	done := make(chan struct{})
+	go func() {
+		defer close(done)
+		s.Run(ctx)
+	}()
+	logger.Printf("automatic cache invalidation on for %d source(s)", len(sc.Sources))
+	return func() {
+		cancel()
+		select {
+		case <-done:
+		case <-time.After(5 * time.Second):
+		}
+	}
+}
+
+// engineInvalidator runs TAG.INVALIDATE and DEL inside the server, through
+// the normal command path (so they replicate and reach the AOF).
+type engineInvalidator struct {
+	e  *command.Engine
+	ns string
+
+	mu sync.Mutex
+	c  *command.Client
+}
+
+func (ei *engineInvalidator) Invalidate(_ context.Context, tags, keys []string) error {
+	ei.mu.Lock()
+	defer ei.mu.Unlock()
+	if ei.c == nil {
+		ei.c = ei.e.InternalClient("db-sync", false)
+		if ei.ns != "" {
+			if v := ei.e.Execute(ei.c, []string{"NAMESPACE", "USE", ei.ns}); v.IsError() {
+				ei.c = nil
+				return errors.New(v.Str)
+			}
+		}
+	}
+	for _, cmd := range [][]string{append([]string{"TAG.INVALIDATE"}, tags...), append([]string{"DEL"}, keys...)} {
+		if len(cmd) == 1 {
+			continue
+		}
+		if v := ei.e.Execute(ei.c, cmd); v.IsError() {
+			return errors.New(v.Str)
+		}
+	}
+	return nil
+}

@@ -48,6 +48,10 @@ type Config struct {
 
 	CompressionThreshold int // compress string values >= this many bytes; 0 = off
 	HistoryDepth         int // versions kept per string key; 0 = off
+	// DBSync is a db-sync YAML file (docs/db-sync.md). When set, and the file
+	// says auto_invalidate: true, the server invalidates cache entries itself
+	// when database rows change. Empty = off.
+	DBSync string
 
 	ReplicaOf  string // "host port" or "" for leader
 	MasterAuth string // password used to authenticate to the leader
@@ -223,6 +227,8 @@ func (c *Config) set(name string, vals []string) error {
 		c.CompressionThreshold, err = strconv.Atoi(v)
 	case "history-depth":
 		c.HistoryDepth, err = strconv.Atoi(v)
+	case "db-sync":
+		c.DBSync = v
 	case "replicaof", "slaveof":
 		if strings.EqualFold(v, "no one") {
 			v = ""
@@ -285,6 +291,7 @@ func (c *Config) Params(pattern string) [][2]string {
 		"auto-aof-rewrite-min-size":   strconv.FormatInt(c.AutoAOFRewriteMinSize, 10),
 		"compression-threshold":       strconv.Itoa(c.CompressionThreshold),
 		"history-depth":               strconv.Itoa(c.HistoryDepth),
+		"db-sync":                     c.DBSync,
 		"replicaof":                   c.ReplicaOf,
 		"masterauth":                  c.MasterAuth,
 		"repl-backlog-size":           strconv.FormatInt(c.ReplBacklogSize, 10),

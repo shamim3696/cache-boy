@@ -1,7 +1,11 @@
-// Package dbsync keeps cache-boy in step with a PostgreSQL database. It reads
-// the database's change stream (logical replication, pgoutput) and, for every
-// committed change to a configured table, invalidates the cache tags and keys
-// that rules derive from the changed row.
+// Package dbsync keeps cache-boy in step with databases. It reads each
+// database's change stream (PostgreSQL logical replication, MySQL binlog,
+// MongoDB change streams) and, for every committed change to a configured
+// table or collection, invalidates the cache tags and keys that rules derive
+// from the changed row.
+//
+// It is off unless the config says auto_invalidate: true. Without it,
+// applications invalidate the cache themselves (TAG.INVALIDATE / DEL).
 package dbsync
 
 import (
@@ -15,38 +19,65 @@ import (
 	"gopkg.in/yaml.v3"
 )
 
-// Config is the cache-boy-sync configuration file.
+// Config is the db-sync configuration file.
 type Config struct {
-	Postgres PostgresConfig `yaml:"postgres"`
-	Cache    CacheConfig    `yaml:"cache"`
-	Rules    []RuleConfig   `yaml:"rules"`
-}
-
-type PostgresConfig struct {
-	// URL is a libpq connection string or URL. The user needs the
-	// REPLICATION attribute (or to be a superuser) and, to create the
-	// publication, ownership of the tables.
-	URL string `yaml:"url"`
-	// Slot is the replication slot that remembers how far the stream has been
-	// processed, so nothing is missed across restarts. Default "cache_boy".
-	Slot string `yaml:"slot"`
-	// Publication lists the tables Postgres streams changes for. It is
-	// created, or extended with missing tables, at startup. Default "cache_boy".
-	Publication string `yaml:"publication"`
+	// AutoInvalidate is the master switch. When false (the default) nothing
+	// is invalidated automatically and the cache is only changed by the
+	// application.
+	AutoInvalidate bool           `yaml:"auto_invalidate"`
+	Cache          CacheConfig    `yaml:"cache"`
+	Sources        []SourceConfig `yaml:"sources"`
 }
 
 type CacheConfig struct {
-	Addr      string `yaml:"addr"` // default 127.0.0.1:6380
+	Addr      string `yaml:"addr"` // default 127.0.0.1:6380; unused when embedded in the server
 	Username  string `yaml:"username"`
 	Password  string `yaml:"password"`
 	Namespace string `yaml:"namespace"`
 }
 
+// Source types.
+const (
+	TypePostgres = "postgres"
+	TypeMySQL    = "mysql"
+	TypeMongoDB  = "mongodb"
+)
+
+// SourceConfig is one database to watch.
+type SourceConfig struct {
+	// Name identifies the source in logs and in the default state file name.
+	// Default: the type, plus an index when there are several of one type.
+	Name string `yaml:"name"`
+	Type string `yaml:"type"` // postgres | mysql | mongodb
+	URL  string `yaml:"url"`
+
+	// PostgreSQL: replication slot and publication (default "cache_boy").
+	Slot        string `yaml:"slot"`
+	Publication string `yaml:"publication"`
+
+	// MySQL: the replica server id this reader uses; it must be unique among
+	// the server's replicas. Default 1673 + source index.
+	ServerID uint32 `yaml:"server_id"`
+
+	// MongoDB: database to watch (default: the database in the URL path).
+	Database string `yaml:"database"`
+
+	// MySQL and MongoDB keep their stream position in this file so a
+	// restart resumes where it stopped. Default "<name>.cbsync-state" in
+	// the state directory (the server's dir when embedded).
+	StateFile string `yaml:"state_file"`
+
+	Rules []RuleConfig `yaml:"rules"`
+}
+
 type RuleConfig struct {
-	// Table is "name" (schema public) or "schema.name".
-	Table string `yaml:"table"`
+	// Table is "name" or "schema.name" (PostgreSQL schema, MySQL database).
+	// For MongoDB use Collection (Table is accepted too).
+	Table      string `yaml:"table"`
+	Collection string `yaml:"collection"`
 	// Tags are invalidated with TAG.INVALIDATE; Keys are deleted with DEL.
-	// Both may use {column} placeholders.
+	// Both may use {column} placeholders; MongoDB fields may be dotted
+	// paths such as {profile.city}.
 	Tags []string `yaml:"tags"`
 	Keys []string `yaml:"keys"`
 	// On limits the rule to some operations: insert, update, delete,
@@ -68,7 +99,7 @@ var opNames = map[string]op{"insert": opInsert, "update": opUpdate, "delete": op
 
 // rule is a compiled RuleConfig.
 type rule struct {
-	schema, table string
+	schema, table string // schema: PostgreSQL schema, MySQL/MongoDB database
 	tags, keys    []*template
 	on            op
 }
@@ -96,57 +127,104 @@ func Parse(data []byte) (*Config, error) {
 	if err := dec.Decode(&c); err != nil {
 		return nil, fmt.Errorf("config: %w", err)
 	}
-	if c.Postgres.Slot == "" {
-		c.Postgres.Slot = "cache_boy"
-	}
-	if c.Postgres.Publication == "" {
-		c.Postgres.Publication = "cache_boy"
-	}
 	if c.Cache.Addr == "" {
 		c.Cache.Addr = "127.0.0.1:6380"
 	}
-	if _, err := c.compile(); err != nil {
-		return nil, err
+	if len(c.Sources) == 0 {
+		return nil, errors.New("config: at least one source is required")
+	}
+	count := map[string]int{}
+	for _, s := range c.Sources {
+		count[s.Type]++
+	}
+	seen := map[string]int{}
+	names := map[string]bool{}
+	for i := range c.Sources {
+		s := &c.Sources[i]
+		s.Type = strings.ToLower(s.Type)
+		switch s.Type {
+		case TypePostgres, TypeMySQL, TypeMongoDB:
+		case "postgresql", "pg":
+			s.Type = TypePostgres
+		case "mongo":
+			s.Type = TypeMongoDB
+		default:
+			return nil, fmt.Errorf("config: sources[%d]: type must be postgres, mysql or mongodb, not %q", i, s.Type)
+		}
+		if s.Name == "" {
+			s.Name = s.Type
+			if count[s.Type] > 1 {
+				s.Name = fmt.Sprintf("%s-%d", s.Type, seen[s.Type]+1)
+			}
+		}
+		seen[s.Type]++
+		if names[s.Name] {
+			return nil, fmt.Errorf("config: two sources are named %q", s.Name)
+		}
+		names[s.Name] = true
+		if s.URL == "" {
+			return nil, fmt.Errorf("config: source %q: url is required", s.Name)
+		}
+		if s.Slot == "" {
+			s.Slot = "cache_boy"
+		}
+		if s.Publication == "" {
+			s.Publication = "cache_boy"
+		}
+		if s.ServerID == 0 {
+			s.ServerID = 1673 + uint32(i)
+		}
+		if s.Type == TypePostgres {
+			if !identRe.MatchString(s.Slot) {
+				return nil, fmt.Errorf("config: source %q: slot %q must be lowercase letters, digits and _", s.Name, s.Slot)
+			}
+			if !identRe.MatchString(s.Publication) {
+				return nil, fmt.Errorf("config: source %q: publication %q must be lowercase letters, digits and _", s.Name, s.Publication)
+			}
+		}
+		if _, err := compileRules(s, "x"); err != nil {
+			return nil, err
+		}
 	}
 	return &c, nil
 }
 
-func (c *Config) compile() ([]*rule, error) {
-	if c.Postgres.URL == "" {
-		return nil, errors.New("config: postgres.url is required")
-	}
-	if !identRe.MatchString(c.Postgres.Slot) {
-		return nil, fmt.Errorf("config: postgres.slot %q must be lowercase letters, digits and _", c.Postgres.Slot)
-	}
-	if !identRe.MatchString(c.Postgres.Publication) {
-		return nil, fmt.Errorf("config: postgres.publication %q must be lowercase letters, digits and _", c.Postgres.Publication)
-	}
-	if len(c.Rules) == 0 {
-		return nil, errors.New("config: at least one rule is required")
+// compileRules compiles a source's rules. defaultSchema is used for tables
+// given without one (PostgreSQL "public", the MySQL/MongoDB database).
+func compileRules(s *SourceConfig, defaultSchema string) ([]*rule, error) {
+	if len(s.Rules) == 0 {
+		return nil, fmt.Errorf("config: source %q: at least one rule is required", s.Name)
 	}
 	var rules []*rule
-	for i, rc := range c.Rules {
-		where := fmt.Sprintf("config: rules[%d]", i)
-		if rc.Table == "" {
-			return nil, fmt.Errorf("%s: table is required", where)
+	for i, rc := range s.Rules {
+		where := fmt.Sprintf("config: source %q: rules[%d]", s.Name, i)
+		name := rc.Table
+		if rc.Collection != "" {
+			if name != "" {
+				return nil, fmt.Errorf("%s: give table or collection, not both", where)
+			}
+			name = rc.Collection
 		}
-		r := &rule{schema: "public", table: rc.Table, on: opAll}
-		if s, t, ok := strings.Cut(rc.Table, "."); ok {
-			r.schema, r.table = s, t
+		if name == "" {
+			return nil, fmt.Errorf("%s: table (or collection) is required", where)
 		}
-		where = fmt.Sprintf("config: rule for %s", r.name())
+		r := &rule{schema: defaultSchema, table: name, on: opAll}
+		if sc, t, ok := strings.Cut(name, "."); ok {
+			r.schema, r.table = sc, t
+		}
+		where = fmt.Sprintf("config: source %q: rule for %s", s.Name, name)
 		if len(rc.Tags)+len(rc.Keys) == 0 {
 			return nil, fmt.Errorf("%s: needs tags or keys", where)
 		}
-		for _, s := range rc.Tags {
-			t, err := parseTemplate(s)
+		for _, str := range rc.Tags {
+			t, err := parseTemplate(str)
 			if err != nil {
 				return nil, fmt.Errorf("%s: tag %w", where, err)
 			}
 			r.tags = append(r.tags, t)
 		}
-		for _, s := range rc.Keys {
-			t, err := parseTemplate(s)
+		for _, str := range rc.Keys {
+			t, err := parseTemplate(str)
 			if err != nil {
 				return nil, fmt.Errorf("%s: key %w", where, err)
 			}
@@ -154,10 +232,10 @@ func (c *Config) compile() ([]*rule, error) {
 		}
 		if len(rc.On) > 0 {
 			r.on = 0
-			for _, s := range rc.On {
-				o, ok := opNames[strings.ToLower(s)]
+			for _, str := range rc.On {
+				o, ok := opNames[strings.ToLower(str)]
 				if !ok {
-					return nil, fmt.Errorf("%s: unknown operation %q (insert, update, delete, truncate)", where, s)
+					return nil, fmt.Errorf("%s: unknown operation %q (insert, update, delete, truncate)", where, str)
 				}
 				r.on |= o
 			}
@@ -179,6 +257,24 @@ func (r *rule) columns() []string {
 					out = append(out, c)
 				}
 			}
+		}
+	}
+	return out
+}
+
+// distinctTables returns one rule per watched table, sorted by name.
+func distinctTables(rules []*rule) []*rule {
+	seen := map[string]bool{}
+	var out []*rule
+	for _, r := range rules {
+		if !seen[r.name()] {
+			seen[r.name()] = true
+			out = append(out, r)
+		}
+	}
+	for i := 1; i < len(out); i++ {
+		for j := i; j > 0 && out[j].name() < out[j-1].name(); j-- {
+			out[j], out[j-1] = out[j-1], out[j]
 		}
 	}
 	return out

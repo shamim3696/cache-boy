@@ -1,16 +1,22 @@
 package dbsync
 
 import (
+	"context"
+	"errors"
+	"log"
+	"path/filepath"
 	"reflect"
 	"sort"
 	"strings"
+	"sync"
 	"testing"
 
 	"github.com/jackc/pglogrepl"
 )
 
 func TestTemplate(t *testing.T) {
-	row := map[string]value{"id": {text: "42"}, "org": {text: "acme"}, "gone": {null: true}, "big": {unchanged: true}}
+	row := Row{"id": TextValue("42"), "org": TextValue("acme"), "gone": NullValue(), "big": UnchangedValue(),
+		"profile.city": TextValue("Dhaka")}
 	cases := []struct {
 		in, want string
 		ok       bool
@@ -19,6 +25,7 @@ func TestTemplate(t *testing.T) {
 		{"user:{id}", "user:42", true},
 		{"{org}:user:{id}:profile", "acme:user:42:profile", true},
 		{"{id}", "42", true},
+		{"city:{profile.city}", "city:Dhaka", true},
 		{"user:{missing}", "", false},
 		{"user:{gone}", "", false},
 		{"doc:{big}", "", false},
@@ -43,25 +50,45 @@ func TestTemplate(t *testing.T) {
 func TestParseConfig(t *testing.T) {
 	t.Setenv("PG_PASS", "s3cret")
 	cfg, err := Parse([]byte(`
-postgres:
-  url: postgres://app:${PG_PASS}@db:5432/shop
+auto_invalidate: true
 cache:
   addr: cache:6380
-rules:
-  - table: users
-    tags: ["user:{id}", "users:list"]
-  - table: billing.orders
-    tags: ["user:{user_id}"]
-    keys: ["order:{id}"]
-    on: [update, DELETE]
+sources:
+  - type: postgres
+    url: postgres://app:${PG_PASS}@db:5432/shop
+    rules:
+      - table: users
+        tags: ["user:{id}", "users:list"]
+      - table: billing.orders
+        tags: ["user:{user_id}"]
+        keys: ["order:{id}"]
+        on: [update, DELETE]
+  - type: mysql
+    url: mysql://u:p@db:3306/shop
+    rules: [{table: products, tags: ["product:{id}"]}]
+  - type: mongo
+    name: docs
+    url: mongodb://db:27017/?replicaSet=rs0
+    database: cms
+    rules: [{collection: posts, tags: ["post:{_id}"]}]
 `))
 	if err != nil {
 		t.Fatal(err)
 	}
-	if cfg.Postgres.URL != "postgres://app:s3cret@db:5432/shop" || cfg.Postgres.Slot != "cache_boy" || cfg.Postgres.Publication != "cache_boy" {
-		t.Fatalf("defaults/env not applied: %+v", cfg.Postgres)
+	if !cfg.AutoInvalidate {
+		t.Fatal("auto_invalidate not read")
 	}
-	rules, _ := cfg.compile()
+	pg := cfg.Sources[0]
+	if pg.URL != "postgres://app:s3cret@db:5432/shop" || pg.Slot != "cache_boy" || pg.Publication != "cache_boy" || pg.Name != "postgres" {
+		t.Fatalf("defaults/env not applied: %+v", pg)
+	}
+	if cfg.Sources[1].Name != "mysql" || cfg.Sources[1].ServerID == 0 {
+		t.Fatalf("mysql defaults: %+v", cfg.Sources[1])
+	}
+	if cfg.Sources[2].Type != TypeMongoDB || cfg.Sources[2].Name != "docs" {
+		t.Fatalf("mongo alias/name: %+v", cfg.Sources[2])
+	}
+	rules, _ := compileRules(&cfg.Sources[0], "public")
 	if rules[0].name() != "public.users" || rules[1].name() != "billing.orders" {
 		t.Fatalf("table names: %s, %s", rules[0].name(), rules[1].name())
 	}
@@ -71,21 +98,86 @@ rules:
 	if got := rules[1].columns(); !reflect.DeepEqual(got, []string{"user_id", "id"}) {
 		t.Fatalf("columns: %v", got)
 	}
+	mr, _ := compileRules(&cfg.Sources[2], "cms")
+	if mr[0].name() != "cms.posts" {
+		t.Fatalf("mongo rule name %s", mr[0].name())
+	}
 
+	src := func(extra string) string {
+		return "sources:\n  - type: postgres\n    url: x\n" + extra
+	}
 	bad := map[string]string{
-		"no url":   "rules: [{table: t, tags: [a]}]",
-		"no rules": "postgres: {url: x}",
-		"no tags":  "postgres: {url: x}\nrules: [{table: t}]",
-		"bad op":   "postgres: {url: x}\nrules: [{table: t, tags: [a], on: [upsert]}]",
-		"bad tag":  "postgres: {url: x}\nrules: [{table: t, tags: ['a:{id']}]",
-		"typo":     "postgres: {url: x}\nrules: [{table: t, tag: [a]}]",
-		"bad slot": "postgres: {url: x, slot: My-Slot}\nrules: [{table: t, tags: [a]}]",
-		"no table": "postgres: {url: x}\nrules: [{tags: [a]}]",
+		"no sources":     "auto_invalidate: true",
+		"bad type":       "sources: [{type: oracle, url: x, rules: [{table: t, tags: [a]}]}]",
+		"no url":         "sources: [{type: postgres, rules: [{table: t, tags: [a]}]}]",
+		"no rules":       src(""),
+		"no tags":        src("    rules: [{table: t}]"),
+		"bad op":         src("    rules: [{table: t, tags: [a], on: [upsert]}]"),
+		"bad tag":        src("    rules: [{table: t, tags: ['a:{id']}]"),
+		"typo":           src("    rules: [{table: t, tag: [a]}]"),
+		"bad slot":       src("    slot: My-Slot\n    rules: [{table: t, tags: [a]}]"),
+		"no table":       src("    rules: [{tags: [a]}]"),
+		"table and coll": src("    rules: [{table: t, collection: c, tags: [a]}]"),
+		"dup names":      "sources: [{name: a, type: postgres, url: x, rules: [{table: t, tags: [a]}]}, {name: a, type: mysql, url: y, rules: [{table: t, tags: [a]}]}]",
 	}
 	for name, y := range bad {
 		if _, err := Parse([]byte(y)); err == nil {
 			t.Errorf("%s: expected an error", name)
 		}
+	}
+}
+
+func TestAutoInvalidateIsOffByDefault(t *testing.T) {
+	cfg, err := Parse([]byte("sources: [{type: postgres, url: x, rules: [{table: t, tags: [a]}]}]"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if cfg.AutoInvalidate {
+		t.Fatal("auto_invalidate must default to false")
+	}
+	if _, err := New(cfg, nil, Options{}); !errors.Is(err, ErrDisabled) {
+		t.Fatalf("New with auto_invalidate off: %v, want ErrDisabled", err)
+	}
+	cfg.AutoInvalidate = true
+	if _, err := New(cfg, nil, Options{}); err != nil {
+		t.Fatalf("New with auto_invalidate on: %v", err)
+	}
+}
+
+func TestStateDirAndDefaults(t *testing.T) {
+	cfg, _ := Parse([]byte(`auto_invalidate: true
+sources:
+  - {type: mysql, url: "u:p@tcp(h:3306)/db", rules: [{table: t, tags: [a]}]}
+  - {type: mysql, url: "u:p@tcp(h:3306)/db", state_file: /abs/x.state, rules: [{table: t, tags: [a]}]}
+`))
+	dir := t.TempDir()
+	if _, err := New(cfg, nil, Options{StateDir: dir}); err != nil {
+		t.Fatal(err)
+	}
+	if want := filepath.Join(dir, "mysql-1.cbsync-state"); cfg.Sources[0].StateFile != want {
+		t.Fatalf("state file %s, want %s", cfg.Sources[0].StateFile, want)
+	}
+	if cfg.Sources[1].StateFile != "/abs/x.state" && !filepath.IsAbs(cfg.Sources[1].StateFile) {
+		t.Fatalf("absolute state file changed: %s", cfg.Sources[1].StateFile)
+	}
+}
+
+func TestStateFile(t *testing.T) {
+	p := filepath.Join(t.TempDir(), "sub", "s.state")
+	if b, err := loadState(p); err != nil || b != nil {
+		t.Fatalf("missing file: %q %v", b, err)
+	}
+	if err := saveState(p, []byte("pos-1")); err != nil {
+		t.Fatal(err)
+	}
+	if err := saveState(p, []byte("pos-2")); err != nil {
+		t.Fatal(err)
+	}
+	if b, _ := loadState(p); string(b) != "pos-2" {
+		t.Fatalf("got %q", b)
+	}
+	if err := removeState(p, log.New(&strings.Builder{}, "", 0)); err != nil {
+		t.Fatal(err)
 	}
 }
 
@@ -103,7 +195,45 @@ func TestReplicationURL(t *testing.T) {
 	}
 }
 
-// --- processor ---
+// --- sink ---
+
+type fakeInv struct {
+	mu    sync.Mutex
+	fails int
+	calls [][]string
+}
+
+func (f *fakeInv) Invalidate(_ context.Context, tags, keys []string) error {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	if f.fails > 0 {
+		f.fails--
+		return errors.New("down")
+	}
+	f.calls = append(f.calls, append(append([]string{}, tags...), keys...))
+	return nil
+}
+
+func TestSinkRetriesAndChunks(t *testing.T) {
+	inv := &fakeInv{fails: 2}
+	k := &sink{inv: inv, log: log.New(&strings.Builder{}, "", 0)}
+	b := &batch{}
+	for i := 0; i < chunkSize+10; i++ {
+		b.tags = append(b.tags, "t"+strings.Repeat("x", i%3)+string(rune('a'+i%26)))
+	}
+	keepalives := 0
+	if err := k.flush(context.Background(), "test", b, func() error { keepalives++; return nil }); err != nil {
+		t.Fatal(err)
+	}
+	if keepalives == 0 {
+		t.Fatal("keepalive not called while retrying")
+	}
+	if len(inv.calls) < 1 || k.batches.Load() != 1 {
+		t.Fatalf("calls %d batches %d", len(inv.calls), k.batches.Load())
+	}
+}
+
+// --- PostgreSQL processor ---
 
 func tuple(vals ...any) *pglogrepl.TupleData {
 	td := &pglogrepl.TupleData{ColumnNum: uint16(len(vals))}
@@ -128,37 +258,35 @@ func relationMsg(id uint32, schema, table string, cols ...string) *pglogrepl.Rel
 	return m
 }
 
-func newTestProcessor(t *testing.T, yaml string) (*processor, *[]string) {
+func newTestProcessor(t *testing.T, rulesYAML string) (*pgProcessor, *[]string) {
 	t.Helper()
-	cfg, err := Parse([]byte("postgres: {url: x}\n" + yaml))
+	cfg, err := Parse([]byte("sources:\n  - type: postgres\n    url: x\n    rules:\n" + rulesYAML))
 	if err != nil {
 		t.Fatal(err)
 	}
-	rules, _ := cfg.compile()
+	rules, _ := compileRules(&cfg.Sources[0], "public")
 	var warnings []string
-	p := newProcessor(rules, func(f string, a ...any) { warnings = append(warnings, f) })
+	p := newPgProcessor(rules, func(f string, a ...any) { warnings = append(warnings, f) })
 	return p, &warnings
 }
 
-func run(p *processor, msgs ...pglogrepl.Message) *batch {
-	var b *batch
+func run(p *pgProcessor, msgs ...pglogrepl.Message) (*batch, pglogrepl.LSN) {
 	p.handle(&pglogrepl.BeginMessage{})
 	for _, m := range msgs {
 		p.handle(m)
 	}
-	b = p.handle(&pglogrepl.CommitMessage{TransactionEndLSN: 100})
+	b, end := p.handle(&pglogrepl.CommitMessage{TransactionEndLSN: 100})
 	sort.Strings(b.tags)
 	sort.Strings(b.keys)
-	return b
+	return b, end
 }
 
-const orderRules = `rules:
-  - table: orders
-    tags: ["user:{user_id}", "order:{id}", "orders:list"]
-    keys: ["order:{id}:summary"]
-  - table: users
-    tags: ["user:{id}"]
-    on: [update, delete]
+const orderRules = `      - table: orders
+        tags: ["user:{user_id}", "order:{id}", "orders:list"]
+        keys: ["order:{id}:summary"]
+      - table: users
+        tags: ["user:{id}"]
+        on: [update, delete]
 `
 
 func TestProcessorInsertUpdateDelete(t *testing.T) {
@@ -167,17 +295,17 @@ func TestProcessorInsertUpdateDelete(t *testing.T) {
 	p.handle(relationMsg(2, "public", "users", "id", "name"))
 	p.handle(relationMsg(3, "public", "audit", "id"))
 
-	b := run(p, &pglogrepl.InsertMessage{RelationID: 1, Tuple: tuple("7", "42", "hi")})
+	b, end := run(p, &pglogrepl.InsertMessage{RelationID: 1, Tuple: tuple("7", "42", "hi")})
 	if want := []string{"order:7", "orders:list", "user:42"}; !reflect.DeepEqual(b.tags, want) {
 		t.Fatalf("insert tags %v, want %v", b.tags, want)
 	}
-	if want := []string{"order:7:summary"}; !reflect.DeepEqual(b.keys, want) || b.end != 100 {
-		t.Fatalf("insert keys %v end %v", b.keys, b.end)
+	if want := []string{"order:7:summary"}; !reflect.DeepEqual(b.keys, want) || end != 100 {
+		t.Fatalf("insert keys %v end %v", b.keys, end)
 	}
 
 	// Order 7 moves from user 42 to user 43 (REPLICA IDENTITY FULL sends the
 	// old row): both users' caches are stale.
-	b = run(p, &pglogrepl.UpdateMessage{RelationID: 1, OldTupleType: 'O',
+	b, _ = run(p, &pglogrepl.UpdateMessage{RelationID: 1, OldTupleType: 'O',
 		OldTuple: tuple("7", "42", "hi"), NewTuple: tuple("7", "43", "hi")})
 	if want := []string{"order:7", "orders:list", "user:42", "user:43"}; !reflect.DeepEqual(b.tags, want) {
 		t.Fatalf("update tags %v, want %v", b.tags, want)
@@ -185,18 +313,16 @@ func TestProcessorInsertUpdateDelete(t *testing.T) {
 
 	// Default replica identity: a delete only carries the key; the user tag
 	// can't be computed, the rest still is.
-	b = run(p, &pglogrepl.DeleteMessage{RelationID: 1, OldTupleType: 'K', OldTuple: tuple("7", nil, nil)})
+	b, _ = run(p, &pglogrepl.DeleteMessage{RelationID: 1, OldTupleType: 'K', OldTuple: tuple("7", nil, nil)})
 	if want := []string{"order:7", "orders:list"}; !reflect.DeepEqual(b.tags, want) {
 		t.Fatalf("delete tags %v, want %v", b.tags, want)
 	}
 
-	// users rule ignores inserts.
-	b = run(p, &pglogrepl.InsertMessage{RelationID: 2, Tuple: tuple("5", "Ada")})
+	b, _ = run(p, &pglogrepl.InsertMessage{RelationID: 2, Tuple: tuple("5", "Ada")})
 	if len(b.tags) != 0 || b.changes != 0 {
 		t.Fatalf("insert into users should be ignored: %+v", b)
 	}
-	// Tables without rules produce nothing.
-	b = run(p, &pglogrepl.InsertMessage{RelationID: 3, Tuple: tuple("1")})
+	b, _ = run(p, &pglogrepl.InsertMessage{RelationID: 3, Tuple: tuple("1")})
 	if len(b.tags)+len(b.keys) != 0 {
 		t.Fatalf("audit should be ignored: %+v", b)
 	}
@@ -209,22 +335,20 @@ func TestProcessorDedupAcrossTransaction(t *testing.T) {
 	for i := 0; i < 100; i++ {
 		msgs = append(msgs, &pglogrepl.InsertMessage{RelationID: 1, Tuple: tuple("1", "42", "x")})
 	}
-	b := run(p, msgs...)
+	b, _ := run(p, msgs...)
 	if len(b.tags) != 3 || b.changes != 100 {
 		t.Fatalf("expected 3 deduplicated tags from 100 changes, got %v (%d)", b.tags, b.changes)
 	}
-	// The next transaction starts clean.
-	b = run(p)
+	b, _ = run(p)
 	if len(b.tags) != 0 {
 		t.Fatalf("state leaked into the next transaction: %v", b.tags)
 	}
 }
 
 func TestProcessorUnchangedToast(t *testing.T) {
-	p, _ := newTestProcessor(t, "rules: [{table: docs, tags: ['doc:{slug}']}]")
+	p, _ := newTestProcessor(t, "      - {table: docs, tags: ['doc:{slug}']}\n")
 	p.handle(relationMsg(1, "public", "docs", "id", "slug", "body"))
-	// slug unchanged and not resent, but the old row (FULL) has it.
-	b := run(p, &pglogrepl.UpdateMessage{RelationID: 1, OldTupleType: 'O',
+	b, _ := run(p, &pglogrepl.UpdateMessage{RelationID: 1, OldTupleType: 'O',
 		OldTuple: tuple("1", "intro", "old"), NewTuple: tuple("1", byte('u'), "new")})
 	if !reflect.DeepEqual(b.tags, []string{"doc:intro"}) {
 		t.Fatalf("tags %v", b.tags)
@@ -234,26 +358,24 @@ func TestProcessorUnchangedToast(t *testing.T) {
 func TestProcessorTruncate(t *testing.T) {
 	p, warnings := newTestProcessor(t, orderRules)
 	p.handle(relationMsg(1, "public", "orders", "id", "user_id", "note"))
-	b := run(p, &pglogrepl.TruncateMessage{RelationNum: 1, RelationIDs: []uint32{1}})
+	b, _ := run(p, &pglogrepl.TruncateMessage{RelationNum: 1, RelationIDs: []uint32{1}})
 	if !reflect.DeepEqual(b.tags, []string{"orders:list"}) || len(b.keys) != 0 {
 		t.Fatalf("truncate: tags %v keys %v", b.tags, b.keys)
 	}
-	if len(*warnings) != 1 || !strings.Contains((*warnings)[0], "TRUNCATE") {
-		t.Fatalf("expected a TRUNCATE warning, got %v", *warnings)
+	if len(*warnings) != 1 || !strings.Contains((*warnings)[0], "truncated") {
+		t.Fatalf("expected a truncate warning, got %v", *warnings)
 	}
 }
 
 func TestProcessorRelationChange(t *testing.T) {
-	// ALTER TABLE resends the relation with new columns; rows must map by the
-	// latest definition.
-	p, _ := newTestProcessor(t, "rules: [{table: users, tags: ['user:{id}']}]")
+	p, _ := newTestProcessor(t, "      - {table: users, tags: ['user:{id}']}\n")
 	p.handle(relationMsg(1, "public", "users", "name", "id"))
-	b := run(p, &pglogrepl.InsertMessage{RelationID: 1, Tuple: tuple("Ada", "9")})
+	b, _ := run(p, &pglogrepl.InsertMessage{RelationID: 1, Tuple: tuple("Ada", "9")})
 	if !reflect.DeepEqual(b.tags, []string{"user:9"}) {
 		t.Fatalf("tags %v", b.tags)
 	}
 	p.handle(relationMsg(1, "public", "users", "id", "email", "name"))
-	b = run(p, &pglogrepl.InsertMessage{RelationID: 1, Tuple: tuple("10", "a@x", "Bo")})
+	b, _ = run(p, &pglogrepl.InsertMessage{RelationID: 1, Tuple: tuple("10", "a@x", "Bo")})
 	if !reflect.DeepEqual(b.tags, []string{"user:10"}) {
 		t.Fatalf("tags after ALTER %v", b.tags)
 	}
