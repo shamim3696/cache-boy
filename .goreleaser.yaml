@@ -29,6 +29,16 @@ builds:
     goos: [linux, darwin, windows]
     goarch: [amd64, arm64]
 
+  - id: cache-boy-sync
+    main: ./cmd/cache-boy-sync
+    binary: cache-boy-sync
+    env: [CGO_ENABLED=0]
+    flags: [-trimpath]
+    ldflags:
+      - -s -w -X github.com/shamim3696/cache-boy/internal/command.Version={{.Version}}
+    goos: [linux, darwin, windows]
+    goarch: [amd64, arm64]
+
   - id: cache-boy-bench
     main: ./cmd/cache-boy-bench
     binary: cache-boy-bench
@@ -50,6 +60,7 @@ archives:
       - README.md
       - LICENSE
       - configs/cache-boy.conf
+      - configs/cache-boy-sync.yaml
 
 checksum:
   name_template: checksums.txt

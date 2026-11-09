@@ -1,5 +1,5 @@
 #!/bin/sh
-# Installs cache-boy, cache-boy-cli and cache-boy-bench on Linux or macOS.
+# Installs cache-boy, cache-boy-cli, cache-boy-bench and cache-boy-sync on Linux or macOS.
 #
 #   curl -fsSL https://raw.githubusercontent.com/shamim3696/cache-boy/main/scripts/install.sh | sh
 #
@@ -71,7 +71,8 @@ fi
 
 tar -xzf "$tmp/$archive" -C "$tmp"
 mkdir -p "$dir"
-for b in cache-boy cache-boy-cli cache-boy-bench; do
+for b in cache-boy cache-boy-cli cache-boy-bench cache-boy-sync; do
+  [ -f "$tmp/$b" ] || continue # older releases lack some tools
   install -m 0755 "$tmp/$b" "$dir/$b"
 done
 

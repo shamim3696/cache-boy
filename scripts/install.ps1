@@ -1,4 +1,4 @@
-# Installs cache-boy, cache-boy-cli and cache-boy-bench on Windows.
+# Installs cache-boy, cache-boy-cli, cache-boy-bench and cache-boy-sync on Windows.
 #
 #   irm https://raw.githubusercontent.com/shamim3696/cache-boy/main/scripts/install.ps1 | iex
 #
@@ -53,11 +53,14 @@ $ProgressPreference = 'SilentlyContinue' # Invoke-WebRequest is very slow with t
 
         Expand-Archive -Path (Join-Path $tmp $archive) -DestinationPath (Join-Path $tmp 'x') -Force
         New-Item -ItemType Directory -Force -Path $dir | Out-Null
-        foreach ($b in 'cache-boy', 'cache-boy-cli', 'cache-boy-bench') {
-            Copy-Item -Force (Join-Path $tmp "x\$b.exe") (Join-Path $dir "$b.exe")
+        foreach ($b in 'cache-boy', 'cache-boy-cli', 'cache-boy-bench', 'cache-boy-sync') {
+            $src = Join-Path $tmp "x\$b.exe"
+            if (Test-Path $src) { Copy-Item -Force $src (Join-Path $dir "$b.exe") } # older releases lack some tools
         }
-        $conf = Join-Path $tmp 'x\configs\cache-boy.conf'
-        if (Test-Path $conf) { Copy-Item -Force $conf (Join-Path $dir 'cache-boy.conf') }
+        foreach ($c in 'cache-boy.conf', 'cache-boy-sync.yaml') {
+            $conf = Join-Path $tmp "x\configs\$c"
+            if (Test-Path $conf) { Copy-Item -Force $conf (Join-Path $dir $c) }
+        }
     } finally {
         Remove-Item -Recurse -Force $tmp -ErrorAction SilentlyContinue
     }
