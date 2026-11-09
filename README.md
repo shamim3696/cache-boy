@@ -9,7 +9,7 @@ A Redis-compatible in-memory data store written in Go. It speaks the Redis proto
 | Rate limiting | Lua scripts | `RATELIMIT key 100 1m` |
 | Distributed locks | Redlock library | `LOCK name 10s` with fencing tokens |
 | Background jobs | BullMQ | `QPUSH` / `QPOP` / `QACK` with retries, delay, dead-letter |
-| Stale cache after a database write | Delete keys by hand after every write | `cache-boy-sync` reads the Postgres change stream and invalidates tags automatically ([docs](docs/db-sync.md)) |
+| Stale cache after a database write | Delete keys by hand after every write | Opt-in `auto_invalidate`: cache-boy reads the PostgreSQL / MySQL / MongoDB change stream and invalidates tags automatically ([docs](docs/db-sync.md)) |
 | Reacting to key changes | Keyspace notifications config | `KEYWATCH user:*`, `WEBHOOK.ADD` |
 | Calling it from serverless / edge | Paid HTTP proxies | Built-in REST + WebSocket API |
 | Seeing what's in the cache | Third-party GUIs | Built-in web dashboard |
@@ -118,8 +118,8 @@ Every non-Redis command is documented in [docs/features.md](docs/features.md).
 cmd/cache-boy            server
 cmd/cache-boy-cli        CLI (like redis-cli)
 cmd/cache-boy-bench      benchmark (like redis-benchmark)
-cmd/cache-boy-sync       Postgres change stream → automatic cache invalidation
-internal/dbsync          logical replication reader, rules, invalidation
+cmd/cache-boy-sync       standalone runner for automatic invalidation (also built into the server: db-sync)
+internal/dbsync          PostgreSQL / MySQL / MongoDB change streams, rules, invalidation
 internal/protocol/resp   RESP2/RESP3 reader and writer
 internal/server          TCP server: one goroutine per client, plus a writer goroutine
 internal/command         command table and dispatcher, one file per command group

@@ -433,28 +433,30 @@ cb.cacheStats();                // { hits, misses, size, invalidations }
 
 Use it for data that is read far more often than it changes: configuration, feature flags, product details, user profiles.
 
-### Automatic invalidation from PostgreSQL
+### Automatic invalidation from your database
 
-Instead of deleting cache keys in your code after every write, let the database tell the cache. `cache-boy-sync` reads Postgres's change stream and invalidates tags whenever rows change, including changes made by other services, admin tools or plain SQL:
+Instead of deleting cache keys in your code after every write, let the database tell the cache. cache-boy can read the change stream of **PostgreSQL, MySQL or MongoDB** and invalidate tags whenever rows change, including changes made by other services, admin tools or plain SQL. It is **off unless you turn it on**:
 
 ```yaml
-# cache-boy-sync.yaml
-postgres:
-  url: postgres://cache_sync:${PG_PASSWORD}@db:5432/shop
-cache:
-  addr: 127.0.0.1:6380
-rules:
-  - table: users
-    tags: ["user:{id}", "users:list"]
-  - table: orders
-    tags: ["user:{user_id}", "order:{id}"]
+# shop-sync.yaml
+auto_invalidate: true          # without this line nothing is automatic: you invalidate in your code
+sources:
+  - type: postgres             # or mysql, mongodb
+    url: postgres://cache_sync:${PG_PASSWORD}@db:5432/shop
+    rules:
+      - table: users
+        tags: ["user:{id}", "users:list"]
+      - table: orders
+        tags: ["user:{user_id}", "order:{id}"]
 ```
 
-```bash
-cache-boy-sync -config cache-boy-sync.yaml
+Turn it on by adding one line to `cache-boy.conf` (the server runs it), or run it as its own process with `cache-boy-sync -config shop-sync.yaml`:
+
+```
+db-sync shop-sync.yaml
 ```
 
-Now `UPDATE users SET name = 'Karim' WHERE id = 42` invalidates every entry tagged `user:42`, a few milliseconds after the commit, with no cache code in the app. It needs `wal_level = logical` in Postgres. Setup, rules, production advice and limits: [db-sync.md](db-sync.md).
+Now `UPDATE users SET name = 'Karim' WHERE id = 42` invalidates every entry tagged `user:42` a few milliseconds after the commit, with no cache code in the app. The next read reloads just that entry. Database setup, rules, a full worked example, production advice and limits: [db-sync.md](db-sync.md).
 
 ### Keeping old versions
 

@@ -1,34 +1,49 @@
-# cache-boy-sync: invalidate cache-boy entries when PostgreSQL rows change.
-#   cache-boy-sync -config cache-boy-sync.yaml
-# ${VAR} is replaced with the environment variable VAR. See docs/db-sync.md.
+# Automatic cache invalidation: when a database row changes, the cache
+# entries built from it are invalidated. See docs/db-sync.md.
+#
+# Use this file in one of two ways:
+#   - in cache-boy.conf:   db-sync /path/to/cache-boy-sync.yaml   (the server runs it)
+#   - as a separate process:  cache-boy-sync -config cache-boy-sync.yaml
+#
+# ${VAR} is replaced with the environment variable VAR.
 
-postgres:
-  # The user needs the REPLICATION attribute (or superuser), and must own the
-  # tables below so the publication can be created.
-  # Postgres must run with wal_level = logical.
-  url: postgres://cache_sync:${PG_PASSWORD}@127.0.0.1:5432/shop?sslmode=disable
-  # slot: cache_boy          # remembers progress across restarts
-  # publication: cache_boy   # created / extended automatically
+# The switch. Without `auto_invalidate: true` nothing is invalidated
+# automatically, and your application invalidates the cache itself
+# (TAG.INVALIDATE / DEL), exactly as before.
+auto_invalidate: true
 
+# Only used by the separate cache-boy-sync process.
 cache:
   addr: 127.0.0.1:6380
   # username: sync
   # password: ${CACHEBOY_PASSWORD}
   # namespace: shop
 
-# When a row of `table` is inserted, updated or deleted, every tag is
-# invalidated (TAG.INVALIDATE) and every key deleted (DEL). {column} is
-# replaced with the row's value. Tags without placeholders are invalidated on
-# every change, which suits list and count caches.
-rules:
-  - table: users
-    tags: ["user:{id}", "users:list"]
+sources:
+  # --- PostgreSQL (needs wal_level = logical) ---
+  - type: postgres
+    url: postgres://cache_sync:${PG_PASSWORD}@127.0.0.1:5432/shop?sslmode=disable
+    rules:
+      - table: users                    # or schema.table
+        tags: ["user:{id}", "users:list"]
+      - table: orders
+        tags: ["user:{user_id}", "order:{id}"]
+        keys: ["order:{id}:summary"]
+        # on: [insert, update, delete, truncate]   # default: all
+    # Tags from non-key columns (orders.user_id) need the old row on
+    # UPDATE/DELETE:  ALTER TABLE orders REPLICA IDENTITY FULL;
 
-  - table: orders                 # or schema.table
-    tags: ["user:{user_id}", "order:{id}"]
-    keys: ["order:{id}:summary"]
-    # on: [insert, update, delete, truncate]   # default: all
+  # --- MySQL (needs binlog_format = ROW, binlog_row_image = FULL) ---
+  # - type: mysql
+  #   url: mysql://cache_sync:${MYSQL_PASSWORD}@127.0.0.1:3306/shop
+  #   rules:
+  #     - table: products              # or database.table
+  #       tags: ["product:{id}", "category:{category_id}"]
 
-# Tags built from non-key columns (orders.user_id above) need the old row on
-# UPDATE and DELETE. Run once:  ALTER TABLE orders REPLICA IDENTITY FULL;
-# cache-boy-sync warns at startup when a table needs this.
+  # --- MongoDB (needs a replica set) ---
+  # - type: mongodb
+  #   url: mongodb://127.0.0.1:27017/?replicaSet=rs0
+  #   database: shop
+  #   rules:
+  #     - collection: posts
+  #       tags: ["post:{_id}", "author:{author.id}"]
