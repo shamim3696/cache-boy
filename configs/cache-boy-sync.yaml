@@ -1,0 +1,34 @@
+# cache-boy-sync: invalidate cache-boy entries when PostgreSQL rows change.
+#   cache-boy-sync -config cache-boy-sync.yaml
+# ${VAR} is replaced with the environment variable VAR. See docs/db-sync.md.
+
+postgres:
+  # The user needs the REPLICATION attribute (or superuser), and must own the
+  # tables below so the publication can be created.
+  # Postgres must run with wal_level = logical.
+  url: postgres://cache_sync:${PG_PASSWORD}@127.0.0.1:5432/shop?sslmode=disable
+  # slot: cache_boy          # remembers progress across restarts
+  # publication: cache_boy   # created / extended automatically
+
+cache:
+  addr: 127.0.0.1:6380
+  # username: sync
+  # password: ${CACHEBOY_PASSWORD}
+  # namespace: shop
+
+# When a row of `table` is inserted, updated or deleted, every tag is
+# invalidated (TAG.INVALIDATE) and every key deleted (DEL). {column} is
+# replaced with the row's value. Tags without placeholders are invalidated on
+# every change, which suits list and count caches.
+rules:
+  - table: users
+    tags: ["user:{id}", "users:list"]
+
+  - table: orders                 # or schema.table
+    tags: ["user:{user_id}", "order:{id}"]
+    keys: ["order:{id}:summary"]
+    # on: [insert, update, delete, truncate]   # default: all
+
+# Tags built from non-key columns (orders.user_id above) need the old row on
+# UPDATE and DELETE. Run once:  ALTER TABLE orders REPLICA IDENTITY FULL;
+# cache-boy-sync warns at startup when a table needs this.
