@@ -1,13 +1,13 @@
 {
   "name": "cache-boy-client",
-  "version": "0.1.1",
+  "version": "0.1.2",
   "description": "TypeScript/Node.js client for cache-boy: RESP3, auto-pipelining, client-side caching, stampede-safe wrap(), locks, rate limits, queues, tags and an HTTP/edge mode.",
   "repository": {
     "type": "git",
     "url": "git+https://github.com/shamim3696/cache-boy.git",
     "directory": "sdk/typescript"
   },
-  "homepage": "https://github.com/shamim3696/cache-boy#readme",
+  "homepage": "https://github.com/shamim3696/cache-boy/blob/main/docs/guide.md",
   "bugs": "https://github.com/shamim3696/cache-boy/issues",
   "type": "module",
   "main": "./dist/index.js",
