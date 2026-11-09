@@ -1,7 +1,7 @@
 {
   "name": "cache-boy-client",
-  "version": "0.1.2",
-  "description": "TypeScript/Node.js client for cache-boy: RESP3, auto-pipelining, client-side caching, stampede-safe wrap(), locks, rate limits, queues, tags and an HTTP/edge mode.",
+  "version": "0.1.3",
+  "description": "The cache that never serves stale data. TypeScript/Node.js client for cache-boy: automatic invalidation from PostgreSQL/MySQL/MongoDB, RESP3, auto-pipelining, client-side caching, stampede-safe wrap(), locks, rate limits, queues, tags and an HTTP/edge mode.",
   "repository": {
     "type": "git",
     "url": "git+https://github.com/shamim3696/cache-boy.git",

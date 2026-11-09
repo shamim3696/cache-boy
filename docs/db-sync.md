@@ -1,5 +1,7 @@
 # Automatic cache invalidation from your database
 
+> **The cache that never serves stale data.**
+
 cache-boy can watch your database and invalidate cache entries the moment the rows behind them change. You write no cache-deletion code, and the cache stays correct even when data changes outside your app: an admin panel, another service, a migration, someone running SQL by hand.
 
 It works with **PostgreSQL**, **MySQL** (and MariaDB) and **MongoDB**, and it is **off unless you turn it on**.

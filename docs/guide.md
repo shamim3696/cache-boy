@@ -1,5 +1,7 @@
 # cache-boy user guide
 
+> **The cache that never serves stale data.** See [automatic invalidation](db-sync.md).
+
 This guide takes you from installing cache-boy to running it in production. It covers every way to connect and every built-in feature, with working examples.
 
 - Command reference for everything Redis doesn't have: [features.md](features.md)

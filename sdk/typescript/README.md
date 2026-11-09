@@ -1,6 +1,8 @@
 # cache-boy-client
 
-The TypeScript/Node.js client for [cache-boy](https://github.com/shamim3696/cache-boy), a Redis-compatible in-memory data store.
+> **The cache that never serves stale data.**
+
+The TypeScript/Node.js client for [cache-boy](https://github.com/shamim3696/cache-boy), a Redis-compatible in-memory data store. With `auto_invalidate` on, the server watches PostgreSQL, MySQL or MongoDB and invalidates cached entries milliseconds after their rows change, so your app never deletes cache keys by hand ([how it works](https://github.com/shamim3696/cache-boy/blob/main/docs/db-sync.md)).
 
 It works as a drop-in alternative to ioredis for everyday commands. It also covers the things you normally build yourself on top of Redis: client-side caching, typed JSON, stampede-safe cache-aside, locks with fencing tokens, rate limiting, job queues, tag invalidation, and an HTTP mode for serverless and edge runtimes.
 

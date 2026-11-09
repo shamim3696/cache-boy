@@ -1,5 +1,9 @@
 # cache-boy
 
+> **The cache that never serves stale data.**
+>
+> Turn on `auto_invalidate` and cache-boy watches PostgreSQL, MySQL or MongoDB and invalidates cached entries milliseconds after the rows behind them change, whoever changed them. No cache-deletion code in your app. [How it works](docs/db-sync.md)
+
 A Redis-compatible in-memory data store written in Go. It speaks the Redis protocol (RESP2 and RESP3), so existing Redis clients and tools work with it. It adds features that usually need extra libraries or services:
 
 | Problem | What you usually do | cache-boy |
