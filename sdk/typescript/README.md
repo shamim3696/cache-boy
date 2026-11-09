@@ -9,18 +9,59 @@ It works as a drop-in alternative to ioredis for everyday commands. It also cove
 - Auto-pipelining: commands issued in the same tick are sent in one socket write.
 - Auto-reconnect with exponential backoff and jitter. In-flight reads are replayed. Writes that might have run are rejected with a clear error, so they never run twice by accident.
 
+**Learn more:**
+[GitHub repository](https://github.com/shamim3696/cache-boy) ·
+[User guide](https://github.com/shamim3696/cache-boy/blob/main/docs/guide.md) ·
+[Command reference](https://github.com/shamim3696/cache-boy/blob/main/docs/features.md) ·
+[Dashboard tour](https://github.com/shamim3696/cache-boy/blob/main/docs/guide.md#4-the-dashboard-web-ui) ·
+[Benchmarks](https://github.com/shamim3696/cache-boy/blob/main/docs/benchmarks.md) ·
+[Issues](https://github.com/shamim3696/cache-boy/issues)
+
 ## Install
+
+This package is the client. You also need a running cache-boy server:
+
+```sh
+# Windows (PowerShell)
+irm https://raw.githubusercontent.com/shamim3696/cache-boy/main/scripts/install.ps1 | iex
+
+# Linux / macOS
+curl -fsSL https://raw.githubusercontent.com/shamim3696/cache-boy/main/scripts/install.sh | sh
+
+# then start it
+cache-boy          # Redis protocol on :6380, dashboard on http://127.0.0.1:6381
+```
+
+Other options (Docker, Go, source, manual download) are in the [install guide](https://github.com/shamim3696/cache-boy/blob/main/docs/guide.md#2-install).
+
+Then add the client to your app:
 
 ```sh
 npm install cache-boy-client
 ```
+
+## Dashboard
+
+The server comes with a web UI. While it's running, open **http://127.0.0.1:6381** in a browser. If the server has a password, the dashboard asks for it first.
+
+| Tab | What you see |
+|---|---|
+| **Overview** | Version, uptime, ops/sec and memory with live charts, key count (plus expired and evicted), cache hit rate, connected clients. Refreshes every 2 seconds |
+| **Keys** | Search keys by pattern and type, view values (JSON pretty-printed), TTL and size, reload or delete a key |
+| **Console** | Run any command from the browser, with command history |
+| **Events** | A live feed of key changes (`set`, `del`, `expired`, `evicted`...) for a key pattern |
+| **Slowlog** | Slow commands, how long they took and which client sent them |
+| **Clients** | Every connection, with its name, user, namespace and last command |
+| **Commands** | Calls, total time and average time for every command |
+
+Give your connections a name (`new CacheBoy(url, { clientName: 'checkout-api' })`) so they're easy to spot in the Clients tab. More in the [dashboard tour](https://github.com/shamim3696/cache-boy/blob/main/docs/guide.md#4-the-dashboard-web-ui).
 
 ## Quick start
 
 ```ts
 import { CacheBoy } from 'cache-boy-client';
 
-const cb = new CacheBoy('redis://:secret@localhost:6379', {
+const cb = new CacheBoy('redis://:secret@localhost:6380', {
   clientCache: { maxEntries: 10_000 }, // local LRU kept fresh by the server
 });
 

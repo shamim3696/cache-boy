@@ -1,13 +1,13 @@
 {
   "name": "cache-boy-client",
-  "version": "0.1.0",
+  "version": "0.1.1",
   "description": "TypeScript/Node.js client for cache-boy: RESP3, auto-pipelining, client-side caching, stampede-safe wrap(), locks, rate limits, queues, tags and an HTTP/edge mode.",
   "repository": {
     "type": "git",
     "url": "git+https://github.com/shamim3696/cache-boy.git",
     "directory": "sdk/typescript"
   },
-  "homepage": "https://github.com/shamim3696/cache-boy/tree/main/sdk/typescript#readme",
+  "homepage": "https://github.com/shamim3696/cache-boy#readme",
   "bugs": "https://github.com/shamim3696/cache-boy/issues",
   "type": "module",
   "main": "./dist/index.js",
@@ -35,7 +35,7 @@
     "build:test": "tsc -p tsconfig.test.json",
     "test": "npm run build && npm run build:test && node --test \"dist-test/test/*.test.js\"",
     "prepublishOnly": "npm run clean && npm run build",
-    "clean":"node -e \"for (const d of ['dist','dist-test']) require('node:fs').rmSync(d,{recursive:true,force:true})\""
+    "clean": "node -e \"for (const d of ['dist','dist-test']) require('node:fs').rmSync(d,{recursive:true,force:true})\""
   },
   "keywords": [
     "redis",
@@ -45,7 +45,17 @@
     "cache",
     "queue",
     "rate-limit",
-    "lock"
+    "lock",
+    "cache-boy-client",
+    "redis-client",
+    "ioredis",
+    "semantic-cache",
+    "vector-search",
+    "distributed-lock",
+    "job-queue",
+    "cache-stampede",
+    "serverless",
+    "edge"
   ],
   "license": "MIT",
   "devDependencies": {
